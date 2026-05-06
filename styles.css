@@ -1575,7 +1575,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
   padding: 24px;
   backdrop-filter: blur(3px);
 }
@@ -3059,7 +3059,7 @@ html, body {
   #btn-download-invoice:not(.hidden) {
     position: fixed;
     bottom: 16px;
-    z-index: 1300;
+    z-index: 1000;
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
   }
 
@@ -3199,7 +3199,7 @@ html, body {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 1200;
+    z-index: 1500;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
   }
@@ -3224,7 +3224,7 @@ html, body {
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.45);
-    z-index: 1150;
+    z-index: 1450;
     display: block;
   }
 }
