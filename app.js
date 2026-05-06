@@ -77,10 +77,17 @@ function getFilterSelectionArray(type) {
 }
 
 function getFilterDefaultLabel(type) {
-  if (type === 'status') return 'Select Status';
-  if (type === 'state') return 'Select State';
-  if (type === 'driver') return 'Select Drivers';
+  const isMobile = window.matchMedia('(max-width: 900px)').matches;
+  if (type === 'status') return isMobile ? 'Status' : 'Select Status';
+  if (type === 'state') return isMobile ? 'State' : 'Select State';
+  if (type === 'driver') return isMobile ? 'Drivers' : 'Select Drivers';
   return 'Select';
+}
+
+function refreshFilterDropdownLabels() {
+  updateDropdownLabel('status');
+  updateDropdownLabel('state');
+  updateDropdownLabel('driver');
 }
 
 function toggleMultiDropdown(type, ev) {
@@ -218,9 +225,10 @@ async function init() {
   populateCamioneroFilter();
   setupNavigation();
   restoreSidebarState();
+  window.addEventListener('resize', syncSidebarWithViewport);
   initDateRangePicker();
   // initialize multi-select dropdowns labels and outside-click closer
-  try { updateDropdownLabel('status'); updateDropdownLabel('state'); updateDropdownLabel('driver'); } catch (e) {}
+  try { refreshFilterDropdownLabels(); } catch (e) {}
   document.addEventListener('click', () => { closeAllMultiDropdowns(); });
   // Attempt to load remote data; show loading state until fetch completes
   isLoadingLoads = true;
@@ -902,12 +910,60 @@ function setupBrokerInfoAutocomplete() {
 // Sidebar collapse handling
 function toggleSidebar() {
   const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('mobile-sidebar-overlay');
+  const isMobile = window.matchMedia('(max-width: 900px)').matches;
+
+  if (isMobile) {
+    const isOpen = sidebar.classList.toggle('mobile-open');
+    if (overlay) overlay.classList.toggle('hidden', !isOpen);
+    return;
+  }
+
   const collapsed = sidebar.classList.toggle('collapsed');
   try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch (e) {}
 }
 
+function closeMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('mobile-sidebar-overlay');
+  if (!sidebar) return;
+  sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+function syncSidebarWithViewport() {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('mobile-sidebar-overlay');
+  if (!sidebar) return;
+
+  updateCurrentPageTitle();
+  try { refreshFilterDropdownLabels(); } catch (e) {}
+
+  const isMobile = window.matchMedia('(max-width: 900px)').matches;
+  if (isMobile) {
+    sidebar.classList.remove('collapsed');
+    sidebar.classList.remove('mobile-open');
+    if (overlay) overlay.classList.add('hidden');
+    return;
+  }
+
+  // Desktop behavior: default to collapsed unless user explicitly saved expanded.
+  try {
+    const val = localStorage.getItem('sidebarCollapsed');
+    const shouldCollapse = val !== '0';
+    sidebar.classList.toggle('collapsed', shouldCollapse);
+  } catch (e) {
+    sidebar.classList.add('collapsed');
+  }
+
+  sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.add('hidden');
+}
+
 function restoreSidebarState() {
   try {
+    syncSidebarWithViewport();
+    if (window.matchMedia('(max-width: 900px)').matches) return;
     const val = localStorage.getItem('sidebarCollapsed');
     // Por defecto: colapsada, excepto si el usuario guardó '0'
     if (val !== '0') document.querySelector('.sidebar').classList.add('collapsed');
@@ -928,9 +984,23 @@ function setupNavigation() {
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", async (e) => {
       e.preventDefault();
+      closeMobileSidebar();
       await navigateTo(item.dataset.view);
     });
   });
+}
+
+function getViewTitle(view) {
+  const isMobile = window.matchMedia('(max-width: 900px)').matches;
+  if (view === 'dashboard') return 'Dashboard';
+  if (view === 'cargas') return isMobile ? 'Loads' : 'Loads Management';
+  return '';
+}
+
+function updateCurrentPageTitle() {
+  const titleEl = document.getElementById('page-title');
+  if (!titleEl) return;
+  titleEl.textContent = getViewTitle(currentView);
 }
 
 async function navigateTo(view) {
@@ -944,8 +1014,7 @@ async function navigateTo(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
   document.getElementById(`view-${view}`).classList.remove("hidden");
 
-  const titles = { dashboard: "Dashboard", cargas: "Loads Management" };
-  document.getElementById("page-title").textContent = titles[view];
+  updateCurrentPageTitle();
 
   const btn = document.getElementById("btn-nueva-carga");
   const downloadBtn = document.getElementById("btn-download-invoice");
@@ -1443,6 +1512,7 @@ function renderDashboardStats() {
 }
 
 async function openDriverEditModal(driverId) {
+  try { document.getElementById('modal-panel').classList.remove('modal-panel-load-details'); } catch (e) {}
   openDriverEditId = driverId;
   try { await loadDrivers(true); } catch (e) {}
   const driver = DRIVERS.find((d) => String(d.id) === String(driverId));
@@ -1599,7 +1669,6 @@ async function openDriverEditModal(driverId) {
           ${buildStateOptions(point.state || '')}
         </select>
       </div>
-      <button type="button" class="btn btn-outline btn-sm driver-remove-stop-btn" onclick="removeDriverStopRow(this)">-</button>
     </div>`).join('');
   const driverTripsHtml = `
       <div class="driver-trip-strip">
@@ -1662,7 +1731,10 @@ async function openDriverEditModal(driverId) {
           <div class="driver-stops-list">
             ${waypointRowsHtml}
           </div>
-          <button type="button" class="btn btn-outline btn-sm driver-add-stop-row" onclick="addDriverStopRow(this)">Agregar</button>
+          <div class="driver-stops-actions">
+            <button type="button" class="btn btn-outline btn-sm driver-remove-stop-btn" onclick="removeDriverStopRow(this)">-</button>
+            <button type="button" class="btn btn-outline btn-sm driver-add-stop-row" onclick="addDriverStopRow(this)">Agregar</button>
+          </div>
         </div>
         <div class="driver-trip-builder hidden">
           <div class="driver-trip-route-row">
@@ -1992,8 +2064,7 @@ function addDriverStopRow(button) {
         <option value="">State</option>
         ${stateOptions}
       </select>
-    </div>
-    <button type="button" class="btn btn-outline btn-sm driver-remove-stop-btn" onclick="removeDriverStopRow(this)">-</button>`;
+    </div>`;
   list.appendChild(row);
 
   // Re-bind city autocomplete for newly added stop city input using existing setup.
@@ -2003,8 +2074,18 @@ function addDriverStopRow(button) {
 function removeDriverStopRow(button) {
   if (!button) return;
   const row = button.closest('.driver-stop-row');
-  if (!row) return;
-  row.remove();
+  if (row) {
+    row.remove();
+    return;
+  }
+
+  const builder = button.closest('.driver-stops-builder');
+  if (!builder) return;
+  const list = builder.querySelector('.driver-stops-list');
+  if (!list) return;
+  const rows = list.querySelectorAll('.driver-stop-row');
+  if (rows.length === 0) return;
+  rows[rows.length - 1].remove();
 }
 
 async function removeDriverTrip(button) {
@@ -3197,6 +3278,11 @@ document.addEventListener('click', (e) => {
 function openModal(cargaId) {
   const c = CARGAS.find((x) => x.id === cargaId);
   if (!c) return;
+  try {
+    const panel = document.getElementById('modal-panel');
+    panel.classList.remove('modal-panel-wide');
+    panel.classList.add('modal-panel-load-details');
+  } catch (e) {}
   openModalCargaId = cargaId;
   // Build canonical document list and deduplicate by storage path (prefer Supabase URLs)
   const rateFiles = parseDocField(c.rate_conf_url);
@@ -4048,6 +4134,7 @@ function closeModal() {
 
   document.getElementById("modal-overlay").classList.add("hidden");
   document.getElementById("modal-panel").classList.remove("modal-panel-wide");
+  document.getElementById("modal-panel").classList.remove("modal-panel-load-details");
   document.body.style.overflow = "";
   openModalCargaId = null;
 }
@@ -4524,6 +4611,7 @@ async function handleFileUpload() {
 // =============================================================
 
 function openEditModal(cargaId) {
+  try { document.getElementById('modal-panel').classList.remove('modal-panel-load-details'); } catch (e) {}
   const c = CARGAS.find((x) => x.id === cargaId);
   if (!c) return;
   openModalCargaId = cargaId;
@@ -4712,15 +4800,6 @@ function openEditModal(cargaId) {
               </select>
             </div>
             <div class="form-group">
-              <label>Weight</label>
-              <input type="text" name="weight" value="${escapeHtml(weight)}" placeholder="e.g. 40,000 lbs" />
-            </div>
-            <div class="form-group">
-              <label>Miles</label>
-              <input type="number" name="trip_miles" step="1" value="${c.trip_miles || ''}" placeholder="Total miles" />
-            </div>
-
-            <div class="form-group">
               <label>Capacity</label>
               <select name="capacity">
                 <option value="">Select capacity</option>
@@ -4729,14 +4808,21 @@ function openEditModal(cargaId) {
               </select>
             </div>
             <div class="form-group">
+              <label>Weight</label>
+              <input type="text" name="weight" value="${escapeHtml(weight)}" placeholder="e.g. 40,000 lbs" />
+            </div>
+            <div class="form-group">
               <label>Length (ft)</label>
               <input type="number" name="length_ft" step="1" value="${lengthFt}" placeholder="e.g. 53" />
             </div>
             <div class="form-group">
-              <label>Rate (USD)</label>
-              <input type="number" step="0.01" name="rate_usd" value="${c.rate_usd || ''}" placeholder="0.00" />
+              <label>Pallets</label>
+              <input type="number" name="pallets" step="1" value="${pallets}" placeholder="Number" />
             </div>
-
+            <div class="form-group">
+              <label>Miles</label>
+              <input type="number" name="trip_miles" step="1" value="${c.trip_miles || ''}" placeholder="Total miles" />
+            </div>
             <div class="form-group">
               <label>Driver</label>
               <select name="driver">
@@ -4744,8 +4830,8 @@ function openEditModal(cargaId) {
               </select>
             </div>
             <div class="form-group">
-              <label>Pallets</label>
-              <input type="number" name="pallets" step="1" value="${pallets}" placeholder="Number" />
+              <label>Rate (USD)</label>
+              <input type="number" step="0.01" name="rate_usd" value="${c.rate_usd || ''}" placeholder="0.00" />
             </div>
             <div class="form-group">
               <label>Net Price</label>
@@ -5386,14 +5472,36 @@ function toggleDatePicker(input) {
 function showDatePicker(input) {
   const overlay = document.getElementById('date-picker-overlay');
   if (!overlay) return;
+
+  const viewportMargin = 12;
+  const gap = 8;
   overlay.classList.remove('hidden');
+
   const rect = input.getBoundingClientRect();
-  overlay.style.position = 'absolute';
-  overlay.style.left = (rect.left + window.scrollX) + 'px';
-  overlay.style.top = (rect.bottom + window.scrollY + 8) + 'px';
+  overlay.style.position = 'fixed';
+  overlay.style.left = '0px';
+  overlay.style.top = '0px';
   overlay.style.zIndex = 2000;
-  overlay.style.minWidth = Math.max(320, rect.width) + 'px';
+  overlay.style.minWidth = Math.min(Math.max(320, rect.width), window.innerWidth - (viewportMargin * 2)) + 'px';
+
   renderDatePicker();
+
+  // Clamp the calendar inside the viewport and open upward if needed.
+  const overlayRect = overlay.getBoundingClientRect();
+  let left = rect.left;
+  const maxLeft = Math.max(viewportMargin, window.innerWidth - overlayRect.width - viewportMargin);
+  if (left > maxLeft) left = maxLeft;
+  if (left < viewportMargin) left = viewportMargin;
+
+  let top = rect.bottom + gap;
+  const bottomLimit = window.innerHeight - viewportMargin;
+  if ((top + overlayRect.height) > bottomLimit) {
+    top = rect.top - overlayRect.height - gap;
+  }
+  if (top < viewportMargin) top = viewportMargin;
+
+  overlay.style.left = Math.round(left) + 'px';
+  overlay.style.top = Math.round(top) + 'px';
 }
 
 function hideDatePicker() {

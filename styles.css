@@ -230,6 +230,16 @@ html, body {
   gap: 2px;
 }
 
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-menu-btn {
+  display: none !important;
+}
+
 .page-title {
   font-size: 20px;
   font-weight: 700;
@@ -966,6 +976,20 @@ html, body {
   min-width: 0;
 }
 
+.filter-group--triple {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 390px;
+  flex: 1 1 390px;
+}
+
+.filter-group--triple .multi-dropdown {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
 /* Prevent toggle text from wrapping and show ellipsis when very narrow */
 .multi-dropdown-toggle {
   white-space: nowrap;
@@ -1031,6 +1055,7 @@ html, body {
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(2,6,23,0.08);
   padding: 12px;
+  width: min(360px, calc(100vw - 24px));
 }
 .dp-header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 4px; }
 .dp-prev, .dp-next { border:none; background:transparent; font-size:18px; padding:6px 8px; cursor:pointer; border-radius:8px; }
@@ -1051,7 +1076,7 @@ html, body {
 
 /* small responsive adjustments */
 @media (max-width: 520px) {
-  .dp-card { width: 100vw; left: 8px !important; right: 8px !important; }
+  .dp-card { width: calc(100vw - 24px); }
   .dp-cell { width:32px; height:32px; }
 }
 
@@ -1092,6 +1117,9 @@ html, body {
   top: calc(100% + 8px);
   left: 0;
   min-width: 220px;
+  max-width: min(280px, calc(100vw - 24px));
+  max-height: min(320px, calc(100vh - 140px));
+  overflow-y: auto;
   background: #fff;
   border: 1px solid #e6eef8;
   border-radius: 10px;
@@ -1100,6 +1128,13 @@ html, body {
   z-index: 1200;
 }
 .multi-dropdown-menu.hidden { display: none; }
+
+/* Keep right-side filters visible inside narrow containers */
+#filter-status .multi-dropdown-menu,
+#filter-state .multi-dropdown-menu {
+  left: auto;
+  right: 0;
+}
 .multi-option {
   display: flex;
   align-items: center;
@@ -2355,7 +2390,7 @@ html, body {
 }
 
 .edit-modal-card {
-  padding: 24px;
+  padding: 24px 24px 16px;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   margin-bottom: 20px;
@@ -2485,6 +2520,10 @@ html, body {
 .location-field--state {
   flex: 0 0 120px;
   max-width: 120px;
+}
+
+.location-field--state.form-group {
+  margin-bottom: 4px;
 }
 
 .card-header {
@@ -2680,9 +2719,9 @@ html, body {
 
 .driver-stop-row {
   display: grid;
-  grid-template-columns: 1fr 140px auto;
-  gap: 12px;
-  align-items: end;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: stretch;
 }
 
 .driver-stop-row .form-group {
@@ -2696,8 +2735,17 @@ html, body {
   padding: 0 10px;
   font-size: 18px;
   line-height: 1;
-  align-self: end;
+  align-self: flex-start;
+  justify-self: start;
   margin-bottom: 1px;
+}
+
+.driver-stops-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .driver-add-stop-row {
@@ -2918,6 +2966,269 @@ html, body {
   margin-top: 8px;
 }
 
+.mobile-sidebar-overlay {
+  display: none;
+}
+
+/* Desktop (compressed width): keep Actions always visible.
+   If space is tight, hide Pickup/Delivery first. */
+@media (min-width: 901px) and (max-width: 1280px) {
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .data-table thead th:nth-child(7),
+  .data-table thead th:nth-child(8),
+  .data-table tbody td:nth-child(7),
+  .data-table tbody td:nth-child(8) {
+    display: none;
+  }
+
+  .data-table thead th:nth-child(9),
+  .data-table tbody td:nth-child(9) {
+    position: sticky;
+    right: 0;
+    background: #fff;
+    z-index: 2;
+    min-width: 78px;
+    text-align: right;
+  }
+
+  .action-menu {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 900px) {
+  .filters-bar,
+  .filter-group,
+  .filter-group--triple,
+  .multi-dropdown {
+    overflow: visible;
+  }
+
+  .filter-group--triple {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .filter-group--triple .multi-dropdown {
+    min-width: 0;
+  }
+
+  .filter-group--triple .multi-dropdown-toggle {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 12px;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex !important;
+  }
+
+  .stop-row-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .stop-row-box > .form-group:first-child {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  .stop-row-box > .form-group:nth-child(2) {
+    flex: 1 1 calc(100% - 56px);
+    min-width: 0;
+  }
+
+  .stop-row-box > .btn-delete-stop {
+    flex: 0 0 auto;
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .header-right {
+    position: static;
+  }
+
+  #btn-nueva-carga:not(.hidden),
+  #btn-download-invoice:not(.hidden) {
+    position: fixed;
+    bottom: 16px;
+    z-index: 1300;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+  }
+
+  #btn-nueva-carga:not(.hidden) {
+    right: 16px;
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    min-height: 52px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+    justify-content: center;
+  }
+
+  #btn-nueva-carga:not(.hidden)::before {
+    content: '+';
+    font-size: 30px;
+    line-height: 1;
+    font-weight: 500;
+  }
+
+  #btn-download-invoice:not(.hidden) {
+    right: 78px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #2563eb;
+    border: 1px solid #dbeafe;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #btn-download-invoice:not(.hidden):hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  /* Loads table on mobile: keep Broker, Route and Actions always visible */
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .data-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 8px;
+  }
+
+  .data-table thead th:nth-child(1),
+  .data-table thead th:nth-child(4),
+  .data-table thead th:nth-child(5),
+  .data-table thead th:nth-child(6),
+  .data-table thead th:nth-child(7),
+  .data-table thead th:nth-child(8),
+  .data-table tbody td:nth-child(1),
+  .data-table tbody td:nth-child(4),
+  .data-table tbody td:nth-child(5),
+  .data-table tbody td:nth-child(6),
+  .data-table tbody td:nth-child(7),
+  .data-table tbody td:nth-child(8) {
+    display: none;
+  }
+
+  .data-table thead th:nth-child(2),
+  .data-table tbody td:nth-child(2) {
+    width: 34%;
+  }
+
+  .data-table thead th:nth-child(3),
+  .data-table tbody td:nth-child(3) {
+    width: 44%;
+  }
+
+  /* Mobile label shorthand for route column */
+  .data-table thead th:nth-child(3) {
+    font-size: 0;
+  }
+
+  .data-table thead th:nth-child(3)::before {
+    content: 'O \2192 D';
+    font-size: 11px;
+  }
+
+  .data-table thead th:nth-child(9),
+  .data-table tbody td:nth-child(9) {
+    width: 22%;
+    min-width: 72px;
+    text-align: right;
+    padding-right: 12px;
+  }
+
+  .route-cell {
+    min-width: 0;
+    display: block;
+    line-height: 1.3;
+  }
+
+  .route-sep {
+    margin: 0 4px;
+  }
+
+  .action-menu {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .action-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 32px;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar,
+  .sidebar.collapsed {
+    width: 248px;
+    min-width: 248px;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1200;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .main-wrapper {
+    width: 100%;
+  }
+
+  .top-header {
+    padding: 12px 14px;
+  }
+
+  .content {
+    padding: 14px;
+  }
+
+  .mobile-sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 1150;
+    display: block;
+  }
+}
+
 @media (max-width: 760px) {
   .driver-trip-route-row {
     grid-template-columns: 1fr;
@@ -2925,5 +3236,205 @@ html, body {
 
   .driver-trip-builder-arrow {
     padding-top: 0;
+  }
+}
+
+/* =============================================================
+   MODAL EDIT / NEW LOAD — Route & Schedule — mobile layout
+   ============================================================= */
+@media (max-width: 900px) {
+  /* Collapse all 2-column and 3-column modal grids to single column */
+  .modal-grid-2,
+  .modal-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Route section: stack Origin → arrow → Destination vertically */
+  .edit-modal-card .modal-grid-2:first-child > div:last-child {
+    position: static;
+  }
+
+  /* Hide the floating arrow between Origin and Destination boxes.
+     It uses position:absolute with left:-34px which overflows on mobile. */
+  .edit-modal-card .modal-grid-2:first-child > div:last-child > div[style*="position:absolute"] {
+    display: none !important;
+  }
+
+  /* Route section cards (Origin / Destination / Pickup / Delivery) fill full width */
+  .edit-modal-card .card-content .modal-grid-2 > div {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Inputs and selects inside the modal fill full width */
+  .edit-modal-card .card-content input,
+  .edit-modal-card .card-content select,
+  .edit-modal-card .card-content textarea {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Ensure location-row (City + State) stacks in single column on small screens */
+  .location-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .location-field,
+  .location-field--state {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Tighten bottom spacing under State in Route & Schedule cards */
+  .edit-modal-card .modal-grid-2:first-child .location-field--state.form-group {
+    margin-bottom: 0 !important;
+  }
+
+  .edit-modal-card .modal-grid-2:first-child > div[style*="background:#fff"] {
+    padding-bottom: 8px !important;
+  }
+
+  /* Driver Info modal on smaller phones: stack fields vertically, except STATUS/STATE */
+  .edit-modal-card .card-content .modal-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .edit-modal-card .card-content .modal-grid-2 > div {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .edit-modal-card .card-content .modal-grid-2 > div[style*="display:flex"] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .edit-modal-card .card-content .modal-grid-2 > div[style*="grid-column: 2"] {
+    grid-column: auto !important;
+  }
+}
+
+/* =============================================================
+   MODAL LOAD DETAILS — mobile reflow
+   ============================================================= */
+@media (max-width: 900px) {
+  .modal-panel-load-details .modal-body {
+    overflow-x: hidden;
+  }
+
+  .modal-panel-load-details .modal-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  /* First block re-order:
+     1) status/state
+     2) miles/money/rpm/commission chips
+     3) route (origin/destination/stops)
+     4) assigned driver */
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type > .modal-section {
+    display: contents;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type .modal-status-row--dual {
+    order: 1;
+    margin-bottom: 2px;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type .modal-section-head--route {
+    order: 2;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type .modal-section-head--route .modal-section-title {
+    display: none;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type .modal-route-meta {
+    display: flex;
+    margin-left: 0;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type .modal-route {
+    order: 3;
+  }
+
+  .modal-panel-load-details .modal-body > .modal-grid:first-of-type .modal-status-row--dual + .modal-section {
+    order: 4;
+    margin-top: 10px;
+    margin-bottom: 0;
+  }
+
+  .modal-panel-load-details .modal-route-value,
+  .modal-panel-load-details .modal-broker-val,
+  .modal-panel-load-details .modal-load-id-val {
+    overflow-wrap: anywhere;
+  }
+
+  .modal-panel-load-details .docs-upload-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    align-items: center;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn {
+    min-width: 0;
+    width: 100%;
+    padding: 8px 6px;
+    text-align: center;
+    font-size: 0;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn:nth-child(1)::before {
+    content: '+ Rate';
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn:nth-child(2)::before {
+    content: '+BOL';
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn:nth-child(3)::before {
+    content: '+ Other';
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn:nth-child(4)::before {
+    content: '✎';
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn:nth-child(4) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .modal-panel-load-details .docs-upload-row .btn:nth-child(4)::before {
+    display: block;
+    text-align: center;
   }
 }

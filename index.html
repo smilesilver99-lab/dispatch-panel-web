@@ -74,7 +74,12 @@
 
       <header class="top-header">
         <div class="header-left">
-          <h1 class="page-title" id="page-title">Dashboard</h1>
+          <div class="header-title-row">
+            <button id="btn-mobile-menu" class="btn btn-icon mobile-menu-btn" onclick="toggleSidebar()" aria-label="Open menu">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+            </button>
+            <h1 class="page-title" id="page-title">Dashboard</h1>
+          </div>
           <span class="page-date" id="page-date"></span>
         </div>
         <div class="header-right">
@@ -90,6 +95,8 @@
           </button>
         </div>
       </header>
+
+      <div class="mobile-sidebar-overlay hidden" id="mobile-sidebar-overlay" onclick="closeMobileSidebar()"></div>
 
       <main class="content">
 
@@ -129,14 +136,12 @@
 
             <!-- Status filter removed per request; use the summary chips to filter by status -->
 
-            <div class="filter-group">
+            <div class="filter-group filter-group--triple">
               <div class="multi-dropdown" id="filter-driver">
                 <button type="button" class="multi-dropdown-toggle" id="filter-driver-toggle" onclick="toggleMultiDropdown('driver', event)">Select Drivers</button>
                 <div class="multi-dropdown-menu hidden" id="filter-driver-menu" onclick="event.stopPropagation()"></div>
               </div>
-            </div>
 
-            <div class="filter-group filter-group--pair">
               <div class="multi-dropdown" id="filter-status">
                 <button type="button" class="multi-dropdown-toggle" id="filter-status-toggle" onclick="toggleMultiDropdown('status', event)">Select Status</button>
                 <div class="multi-dropdown-menu hidden" id="filter-status-menu" onclick="event.stopPropagation()">
