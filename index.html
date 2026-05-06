@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dispatch Panel – Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="3" width="14" height="12" rx="1"/>
+            <path d="M15 7h4l4 4v4h-8V7z"/>
+            <circle cx="5.5" cy="17.5" r="2.5"/>
+            <circle cx="18.5" cy="17.5" r="2.5"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <span class="logo-title">DespachoWeb</span>
+          <span class="logo-subtitle">Admin Panel</span>
+        </div>
+        <button id="btn-toggle-sidebar" class="btn btn-icon sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-label">Main</span>
+
+        <a href="#" class="nav-item active" data-view="dashboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <span class="nav-label">Dashboard</span>
+        </a>
+
+        <a href="#" class="nav-item" data-view="cargas">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <line x1="9" y1="12" x2="15" y2="12"/>
+            <line x1="9" y1="16" x2="13" y2="16"/>
+          </svg>
+          <span class="nav-label">Loads</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="user-avatar">AD</div>
+          <div class="user-info">
+            <span class="user-name">Administrator</span>
+            <span class="user-role">Dispatch</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── MAIN ── -->
+    <div class="main-wrapper">
+
+      <header class="top-header">
+        <div class="header-left">
+          <h1 class="page-title" id="page-title">Dashboard</h1>
+          <span class="page-date" id="page-date"></span>
+        </div>
+        <div class="header-right">
+          <button class="btn-icon hidden" id="btn-download-invoice" onclick="downloadInvoiceDoc()" title="Download invoice" aria-label="Download invoice">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+          <button class="btn btn-primary hidden" id="btn-nueva-carga" onclick="openNewCargaModal()">
+            + New Load
+          </button>
+        </div>
+      </header>
+
+      <main class="content">
+
+        <!-- ── VISTA: DASHBOARD ── -->
+        <section id="view-dashboard" class="view">
+
+          <div class="stats-grid" id="dashboard-stats"></div>
+
+          <div class="section-header">
+            <h2 class="section-title">Active Loads by Driver</h2>
+            <span class="section-badge" id="active-count-badge"></span>
+          </div>
+
+          <div id="dashboard-truckers"></div>
+
+        </section>
+
+        <!-- ── VISTA: CARGAS ── -->
+        <section id="view-cargas" class="view hidden">
+
+          <!-- Filtros -->
+          <div class="filters-bar">
+            <div class="filter-group filter-group--wide">
+              <div class="input-icon-wrap">
+                <svg class="input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  type="text"
+                  class="filter-input"
+                  id="filter-search"
+                  placeholder="Search by ID, broker, route, MC..."
+                  oninput="applyFilters()"
+                />
+              </div>
+            </div>
+
+            <!-- Status filter removed per request; use the summary chips to filter by status -->
+
+            <div class="filter-group">
+              <div class="multi-dropdown" id="filter-driver">
+                <button type="button" class="multi-dropdown-toggle" id="filter-driver-toggle" onclick="toggleMultiDropdown('driver', event)">Select Drivers</button>
+                <div class="multi-dropdown-menu hidden" id="filter-driver-menu" onclick="event.stopPropagation()"></div>
+              </div>
+            </div>
+
+            <div class="filter-group filter-group--pair">
+              <div class="multi-dropdown" id="filter-status">
+                <button type="button" class="multi-dropdown-toggle" id="filter-status-toggle" onclick="toggleMultiDropdown('status', event)">Select Status</button>
+                <div class="multi-dropdown-menu hidden" id="filter-status-menu" onclick="event.stopPropagation()">
+                  <label class="multi-option"><input type="checkbox" value="Pending" onchange="onFilterCheckboxChange('status', this)" /> Pending</label>
+                  <label class="multi-option"><input type="checkbox" value="Confirmed" onchange="onFilterCheckboxChange('status', this)" /> Confirmed</label>
+                  <label class="multi-option"><input type="checkbox" value="Completed" onchange="onFilterCheckboxChange('status', this)" /> Completed</label>
+                  <label class="multi-option"><input type="checkbox" value="Canceled" onchange="onFilterCheckboxChange('status', this)" /> Canceled</label>
+                </div>
+              </div>
+
+              <div class="multi-dropdown" id="filter-state">
+                <button type="button" class="multi-dropdown-toggle" id="filter-state-toggle" onclick="toggleMultiDropdown('state', event)">Select State</button>
+                <div class="multi-dropdown-menu hidden" id="filter-state-menu" onclick="event.stopPropagation()">
+                  <label class="multi-option"><input type="checkbox" value="Awaiting" onchange="onFilterCheckboxChange('state', this)" /> Awaiting</label>
+                  <label class="multi-option"><input type="checkbox" value="Picked up" onchange="onFilterCheckboxChange('state', this)" /> Picked up</label>
+                  <label class="multi-option"><input type="checkbox" value="In Transit" onchange="onFilterCheckboxChange('state', this)" /> In Transit</label>
+                  <label class="multi-option"><input type="checkbox" value="Delivered" onchange="onFilterCheckboxChange('state', this)" /> Delivered</label>
+                  <label class="multi-option"><input type="checkbox" value="Waiting for new rate" onchange="onFilterCheckboxChange('state', this)" /> Waiting for new rate</label>
+                  <label class="multi-option"><input type="checkbox" value="Invoice uploaded" onchange="onFilterCheckboxChange('state', this)" /> Invoice uploaded</label>
+                  <label class="multi-option"><input type="checkbox" value="Paid" onchange="onFilterCheckboxChange('state', this)" /> Paid</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <div class="date-range-wrapper">
+                <input type="text" class="filter-input date-range-input" id="filter-date-range" placeholder="Select date range" readonly />
+              </div>
+            </div>
+
+            <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear</button>
+          </div>
+
+          <!-- Resumen de estados -->
+          <div class="status-summary" id="cargas-status-summary"></div>
+
+          <!-- Tabla -->
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                    <tr>
+                      <th>Load ID</th>
+                      <th>Broker</th>
+                      <th>Origin → Destination</th>
+                      <th>Price</th>
+                      <th>Driver</th>
+                      <th>Status</th>
+                      <th>Pickup</th>
+                      <th>Delivery</th>
+                      <th>Actions</th>
+                    </tr>
+              </thead>
+              <tbody id="cargas-tbody"></tbody>
+            </table>
+
+            <div id="empty-state" class="empty-state hidden">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <p>No loads found with the selected filters.</p>
+              <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear filters</button>
+            </div>
+          </div>
+
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ── MODAL DETALLE ── -->
+  <div class="modal-overlay hidden" id="modal-overlay" onclick="handleOverlayClick(event)">
+    <div class="modal-panel" id="modal-panel">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modal-title"></h2>
+          <span class="modal-subtitle" id="modal-subtitle"></span>
+        </div>
+        <button class="modal-close" onclick="closeModal()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Input de carga de archivos (oculto) -->
+  <input type="file" id="upload-input" style="display:none" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onchange="handleFileUpload()" />
+
+  <!-- Document preview overlay -->
+  <div class="doc-preview-overlay hidden" id="doc-preview-overlay" onclick="closeDocPreview(event)">
+    <div class="doc-preview-panel">
+      <button class="doc-preview-close" onclick="closeDocPreview(event)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <div class="doc-preview-tools hidden" id="doc-preview-tools">
+        <button class="doc-tool-btn" onclick="event.stopPropagation(); zoomDocPreview(0.2)">+</button>
+        <button class="doc-tool-btn" onclick="event.stopPropagation(); zoomDocPreview(-0.2)">-</button>
+        <button class="doc-tool-btn" onclick="event.stopPropagation(); rotateDocPreview(-90)">⟲</button>
+        <button class="doc-tool-btn" onclick="event.stopPropagation(); rotateDocPreview(90)">⟳</button>
+        <button class="doc-tool-btn" onclick="event.stopPropagation(); resetDocPreviewTransform()">Reset</button>
+      </div>
+      <iframe id="doc-preview-iframe" src="" frameborder="0" style="display:none;"></iframe>
+      <img id="doc-preview-img" src="" alt="Document preview" style="display:none;" />
+    </div>
+  </div>
+
+  <!-- Supabase client (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
