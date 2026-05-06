@@ -2144,6 +2144,24 @@ html, body {
   color: #3b82f6;
 }
 
+.doc-item-download {
+  color: #94a3b8;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-item:hover .doc-item-download {
+  color: #3b82f6;
+}
+.doc-item-download:active {
+  transform: scale(0.96);
+}
+
 .doc-confirm-overlay {
   position: fixed;
   inset: 0;
@@ -2225,7 +2243,7 @@ html, body {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
-  z-index: 1100;
+  z-index: 2100;
   display: flex;
   align-items: center;
   justify-content: center;
