@@ -4084,7 +4084,7 @@ async function openDocPreview(url) {
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         docPreviewBlobUrl = URL.createObjectURL(blob);
         iframe.removeAttribute('srcdoc');
-        iframe.src = url;
+        window.open(url, "_blank");
       } catch (e) {
         iframe.src = 'about:blank';
         iframe.srcdoc = `<!doctype html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;background:#0b1220;color:#e2e8f0;font-family:Arial,sans-serif;"><div style="max-width:520px;padding:16px;text-align:center;"><div style="font-size:16px;font-weight:700;margin-bottom:8px;">No se pudo cargar la vista previa del PDF</div><div style="font-size:13px;opacity:.85;line-height:1.45;">El archivo no pudo renderizarse inline desde esta sesión. Intenta abrirlo en una pestaña nueva.</div><a href="${url}" target="_blank" rel="noopener" style="display:inline-block;margin-top:14px;padding:8px 12px;border-radius:8px;background:#1d4ed8;color:#fff;text-decoration:none;font-size:13px;">Abrir PDF</a></div></body></html>`;
