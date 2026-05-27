@@ -63,7 +63,7 @@ let dateRangeState = {
 };
 
 // Multi-select filter state for STATUS and STATE
-const STATUS_FILTER_OPTIONS = ['Pending', 'Confirmed', 'Completed', 'Canceled'];
+const STATUS_FILTER_OPTIONS = ['Pending', 'Confirmed', 'Completed', 'Delayed', 'Canceled'];
 const STATE_FILTER_OPTIONS = ['Awaiting', 'Picked up', 'In Transit', 'Delivered', 'Waiting for new rate', 'Invoice uploaded', 'Paid'];
 window.filterStatusSelected = [];
 window.filterStateSelected = [];
@@ -334,7 +334,7 @@ async function loadRemoteData() {
             documentos: row.documents || row.documentos || [],
             other_doc: row.other_doc || null,
               rate_usd: row.rate_usd || row.rate || null,
-            net_price: row.net_price || null,
+            net_price: row.net_price ?? null,
             commission: row['commission_ %'] ?? row['commission_%'] ?? row.commission ?? row.commision ?? row.commission_pct ?? row.commission_percentage ?? null,
             estimated_rpm: row.estimated_rpm || row.est_rpm || row.rpm_estimated || null,
             capacity: normalizeCapacityType(row.capacity_type || row.capacity || row.capacity_type_code || row.capacityType || null),
@@ -876,9 +876,32 @@ function setupBrokerInfoAutocomplete() {
     return false;
   }
 
-  function resolveBrokerFromCurrentInputs() {
-    if (tryResolveByMc()) return;
-    if (tryResolveByCompany()) return;
+  function resolveBrokerFromCurrentInputs(fieldChanged = null) {
+    const companyValue = companyInput.value.trim();
+    const mcValue = mcInput.value.trim();
+
+    if (fieldChanged === 'company') {
+      if (!companyValue) {
+        clearDependentSuggestions();
+        return;
+      }
+      if (tryResolveByCompany()) return;
+      clearDependentSuggestions();
+      return;
+    }
+
+    if (fieldChanged === 'mc') {
+      if (!mcValue) {
+        clearDependentSuggestions();
+        return;
+      }
+      if (tryResolveByMc()) return;
+      clearDependentSuggestions();
+      return;
+    }
+
+    if (companyValue && tryResolveByCompany()) return;
+    if (mcValue && tryResolveByMc()) return;
     clearDependentSuggestions();
   }
 
@@ -897,13 +920,13 @@ function setupBrokerInfoAutocomplete() {
 
     resolveBrokerFromCurrentInputs();
 
-    mcInput.addEventListener('input', resolveBrokerFromCurrentInputs);
-    mcInput.addEventListener('change', resolveBrokerFromCurrentInputs);
-    mcInput.addEventListener('blur', resolveBrokerFromCurrentInputs);
+    mcInput.addEventListener('input', () => resolveBrokerFromCurrentInputs('mc'));
+    mcInput.addEventListener('change', () => resolveBrokerFromCurrentInputs('mc'));
+    mcInput.addEventListener('blur', () => resolveBrokerFromCurrentInputs('mc'));
 
-    companyInput.addEventListener('input', resolveBrokerFromCurrentInputs);
-    companyInput.addEventListener('change', resolveBrokerFromCurrentInputs);
-    companyInput.addEventListener('blur', resolveBrokerFromCurrentInputs);
+    companyInput.addEventListener('input', () => resolveBrokerFromCurrentInputs('company'));
+    companyInput.addEventListener('change', () => resolveBrokerFromCurrentInputs('company'));
+    companyInput.addEventListener('blur', () => resolveBrokerFromCurrentInputs('company'));
   })();
 }
 
@@ -1166,7 +1189,8 @@ function formatDeliveryDisplay(c) {
 }
 
 function isDelayed(carga) {
-  if (normalizeEstado(carga.estado) === "Completed") return false;
+  const normalizedEstado = normalizeEstado(carga.estado);
+  if (normalizedEstado === "Completed" || normalizedEstado === "Canceled") return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   // parse fecha_entrega as local date (avoid Date-string UTC parsing which can shift the day)
@@ -3025,6 +3049,75 @@ function renderStatusSummary() {
   if (container) container.innerHTML = '';
 }
 
+function isAnyFilterActive() {
+  const search = document.getElementById('filter-search');
+  if (search && search.value.trim()) return true;
+  if (window.filterStatusSelected && window.filterStatusSelected.length > 0) return true;
+  if (window.filterStateSelected && window.filterStateSelected.length > 0) return true;
+  if (window.filterDriverSelected && window.filterDriverSelected.length > 0) return true;
+  if (dateRangeState.start) return true;
+  return false;
+}
+
+function renderFinancialSummary() {
+  const container = document.getElementById('financial-summary');
+  if (!container) return;
+
+  if (!isAnyFilterActive() || !filtered || filtered.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  // Use the same page slice as the PDF export
+  const perPage = pagination.rowsPerPage || 40;
+  const totalResults = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / perPage));
+  const currentPage = Math.min(Math.max(1, pagination.currentPage || 1), totalPages);
+  const startIdx = (currentPage - 1) * perPage;
+  const endIdx = Math.min(startIdx + perPage, totalResults);
+  const pageLoads = filtered.slice(startIdx, endIdx).filter(c => c && !c.__isNew);
+
+  if (pageLoads.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  let subtotalGross = 0;
+  let dispatchFeeTotal = 0;
+  pageLoads.forEach(c => {
+    subtotalGross += toNumberAmount(c.rate_usd);
+    dispatchFeeTotal += toNumberAmount(c.commission);
+  });
+
+  const rawPct = subtotalGross > 0 ? Math.round((dispatchFeeTotal / subtotalGross) * 10000) / 100 : 0;
+  const feeLabel = rawPct > 0 ? `Dispatch Fee (${Number.isInteger(rawPct) ? rawPct : rawPct.toFixed(1)}%)` : 'Dispatch Fee';
+  const netAmount = subtotalGross - dispatchFeeTotal;
+  const loadCount = pageLoads.length;
+
+  container.classList.remove('hidden');
+  container.innerHTML = `
+    <div class="financial-summary-header">
+      <span class="financial-summary-title">Financial Summary</span>
+      <span class="financial-summary-badge">${loadCount} load${loadCount !== 1 ? 's' : ''} · page ${currentPage}</span>
+    </div>
+    <div class="financial-summary-rows">
+      <div class="financial-summary-row">
+        <span class="financial-summary-label">Subtotal Gross Loads</span>
+        <span class="financial-summary-value">${formatUsd(subtotalGross)}</span>
+      </div>
+      <div class="financial-summary-row">
+        <span class="financial-summary-label">${feeLabel}</span>
+        <span class="financial-summary-value">${formatUsd(dispatchFeeTotal)}</span>
+      </div>
+      <div class="financial-summary-divider"></div>
+      <div class="financial-summary-row net">
+        <span class="financial-summary-label">Net Amount</span>
+        <span class="financial-summary-value">${formatUsd(netAmount)}</span>
+      </div>
+    </div>
+  `;
+}
+
 function quickFilterEstado(estado) {
   selectedEstado = estado;
   applyFilters();
@@ -3048,6 +3141,7 @@ function renderTable() {
     // remove pagination while loading
     const existingPagination = document.getElementById('table-pagination');
     if (existingPagination) existingPagination.remove();
+    renderFinancialSummary();
     return;
   }
 
@@ -3077,6 +3171,7 @@ function renderTable() {
     // remove pagination when no results
     const existingPagination = document.getElementById('table-pagination');
     if (existingPagination) existingPagination.remove();
+    renderFinancialSummary();
     return;
   }
 
@@ -3149,6 +3244,7 @@ function renderTable() {
 
     // render/update pagination footer
     renderPaginationControls(startIdx + 1, endIdx, totalResults, pagination.currentPage, totalPages, perPage);
+    renderFinancialSummary();
   }, 140);
 }
 
@@ -3191,9 +3287,11 @@ function renderPaginationControls(startShowing, endShowing, totalResults, curren
       return `<button class="page-btn ${p===currentPage? 'active':''}" onclick="goToPage(${p})">${p}</button>`;
     }).join('');
 
+  const allSelected = totalResults > 0 && perPage >= totalResults;
+
   container.innerHTML = `
     <div class="pagination-footer">
-      <div class="pagination-info">Mostrando ${startShowing}–${endShowing} de ${totalResults} resultados</div>
+      <div class="pagination-info">Showing ${startShowing}–${endShowing} of ${totalResults} results</div>
       <div class="pagination-controls">
         <div class="pagination-left">
           <label class="rows-label">Rows:</label>
@@ -3202,6 +3300,8 @@ function renderPaginationControls(startShowing, endShowing, totalResults, curren
             <option value="40" ${perPage==40? 'selected':''}>40</option>
             <option value="80" ${perPage==80? 'selected':''}>80</option>
             <option value="100" ${perPage==100? 'selected':''}>100</option>
+            <option value="500" ${perPage==500? 'selected':''}>500</option>
+            <option value="all" ${allSelected ? 'selected' : ''}>All</option>
           </select>
         </div>
         <div class="pagination-nav">
@@ -3236,7 +3336,7 @@ function prevPage() { if (pagination.currentPage > 1) goToPage(pagination.curren
 function nextPage() { if (pagination.currentPage < (pagination.totalPages || 1)) goToPage(pagination.currentPage + 1); }
 
 function changeRowsPerPage(val) {
-  const num = Number(val) || 40;
+  const num = String(val).toLowerCase() === 'all' ? Math.max(filtered.length, 1) : (Number(val) || 40);
   pagination.rowsPerPage = num;
   pagination.currentPage = 1;
   renderTable();
@@ -4644,7 +4744,7 @@ async function handleFileUpload() {
 // EDIT LOAD
 // =============================================================
 
-function openEditModal(cargaId) {
+async function openEditModal(cargaId) {
   try { document.getElementById('modal-panel').classList.remove('modal-panel-load-details'); } catch (e) {}
   const c = CARGAS.find((x) => x.id === cargaId);
   if (!c) return;
@@ -4687,6 +4787,19 @@ function openEditModal(cargaId) {
   const lengthFt = (c.length_ft || c.length || '');
   const weight = c.weight || c.peso || '';
   const pallets = (c.pallets || '');
+  const hasValue = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+  let netPricePrefill = c.net_price;
+  // Always prefer net_price from source tables when available.
+  try {
+    const authoritative = await fetchLoadRow(cargaId);
+    if (authoritative && hasValue(authoritative.net_price)) {
+      netPricePrefill = authoritative.net_price;
+      c.net_price = authoritative.net_price;
+    }
+  } catch (e) {
+    // Non-blocking: keep local value when authoritative fetch fails.
+  }
+  const netPriceInputValue = hasValue(netPricePrefill) ? String(netPricePrefill) : '';
   const equipment = canonicalEquipmentCode(c.equipment || c.equipment_type || '');
   const companyEmail = c.contact_email || c.email || '';
   const companyPhone = c.contact_phone || c.phone || '';
@@ -4869,7 +4982,7 @@ function openEditModal(cargaId) {
             </div>
             <div class="form-group">
               <label>Net Price</label>
-              <input type="number" step="0.01" name="net_price" value="${c.net_price || ''}" placeholder="0.00" />
+              <input type="number" step="0.01" name="net_price" value="${escapeHtml(netPriceInputValue)}" placeholder="0.00" />
             </div>
           </div>
         </div>
@@ -5314,7 +5427,7 @@ async function saveEdit(cargaId) {
 
             // rates / pricing
             c.rate_usd = authoritative.rate_usd || authoritative.rate || c.rate_usd;
-            c.net_price = authoritative.net_price || c.net_price;
+            c.net_price = authoritative.net_price ?? c.net_price;
             c.commission = authoritative['commission_ %'] ?? authoritative['commission_%'] ?? authoritative.commission ?? authoritative.commision ?? authoritative.commission_pct ?? authoritative.commission_percentage ?? c.commission ?? null;
 
             // documents & file ids
@@ -5399,7 +5512,7 @@ async function saveEdit(cargaId) {
             c.delivery_time = authoritative.delivery_time || authoritative.delivery_time_col || c.delivery_time;
 
             c.rate_usd = authoritative.rate_usd || authoritative.rate || c.rate_usd;
-            c.net_price = authoritative.net_price || c.net_price;
+            c.net_price = authoritative.net_price ?? c.net_price;
             c.commission = authoritative['commission_ %'] ?? authoritative['commission_%'] ?? authoritative.commission ?? authoritative.commision ?? authoritative.commission_pct ?? authoritative.commission_percentage ?? c.commission ?? null;
 
             c.rate_conf_url = authoritative.rate_conf_url || authoritative.rate_conf || authoritative.rate_url || authoritative.rate_confirmation_url || c.rate_conf_url;

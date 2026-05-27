@@ -148,6 +148,7 @@
                   <label class="multi-option"><input type="checkbox" value="Pending" onchange="onFilterCheckboxChange('status', this)" /> Pending</label>
                   <label class="multi-option"><input type="checkbox" value="Confirmed" onchange="onFilterCheckboxChange('status', this)" /> Confirmed</label>
                   <label class="multi-option"><input type="checkbox" value="Completed" onchange="onFilterCheckboxChange('status', this)" /> Completed</label>
+                  <label class="multi-option"><input type="checkbox" value="Delayed" onchange="onFilterCheckboxChange('status', this)" /> Delayed</label>
                   <label class="multi-option"><input type="checkbox" value="Canceled" onchange="onFilterCheckboxChange('status', this)" /> Canceled</label>
                 </div>
               </div>
@@ -206,7 +207,8 @@
             </div>
           </div>
 
-        </section>
+          <!-- Financial Summary (visible only when a filter is active) -->
+          <div id="financial-summary" class="financial-summary hidden"></div>
 
       </main>
     </div>
