@@ -2774,6 +2774,46 @@ function sanitizeFilenamePart(value) {
   return safe || 'Company';
 }
 
+function formatCommissionPercent(value) {
+  const pct = toNumberAmount(value);
+  if (!(pct > 0)) return '';
+  if (Number.isInteger(pct)) return String(pct);
+  return String(Number(pct.toFixed(2)));
+}
+
+function resolveInvoiceDriver(selectedDriverIds, selectedLoads = []) {
+  const normalizedIds = Array.isArray(selectedDriverIds)
+    ? selectedDriverIds.map((id) => String(id).trim()).filter(Boolean)
+    : [];
+  const driversById = new Map((DRIVERS || []).map((d) => [String(d.id), d]));
+  const driversByName = new Map((DRIVERS || []).map((d) => [String(d.name || '').trim().toLowerCase(), d]));
+  const camionerosById = new Map((CAMIONEROS || []).map((d) => [String(d.id), d]));
+
+  for (const id of normalizedIds) {
+    const byId = driversById.get(id);
+    if (byId) return byId;
+
+    const cam = camionerosById.get(id) || null;
+    const selectedName = cam && cam.nombre ? String(cam.nombre).trim().toLowerCase() : id.toLowerCase();
+    const byName = driversByName.get(selectedName);
+    if (byName) return byName;
+  }
+
+  const loadCandidates = Array.isArray(selectedLoads)
+    ? selectedLoads.map((c) => ({
+        id: c && c.camionero_id !== undefined && c.camionero_id !== null ? String(c.camionero_id).trim() : '',
+        name: String((c && c.driver) || '').trim().toLowerCase()
+      }))
+    : [];
+
+  for (const candidate of loadCandidates) {
+    if (candidate.id && driversById.has(candidate.id)) return driversById.get(candidate.id);
+    if (candidate.name && driversByName.has(candidate.name)) return driversByName.get(candidate.name);
+  }
+
+  return null;
+}
+
 function pickSelectedDriverCompanyName(selectedDriverIds) {
   if (!Array.isArray(selectedDriverIds) || selectedDriverIds.length === 0) return '';
 
@@ -2824,7 +2864,9 @@ function downloadInvoiceDoc() {
     return;
   }
 
-  let companyName = pickSelectedDriverCompanyName(selectedDrivers) || '';
+  const invoiceDriver = resolveInvoiceDriver(selectedDrivers, selectedLoads);
+  let companyName = invoiceDriver ? String(invoiceDriver.company_name || '').trim() : '';
+  if (!companyName) companyName = pickSelectedDriverCompanyName(selectedDrivers) || '';
   if (!companyName) {
     const visibleDriverNames = new Set(selectedLoads.map((c) => String(c.driver || '').trim().toLowerCase()).filter(Boolean));
     const anyDriver = (DRIVERS || []).find((d) => visibleDriverNames.has(String(d.name || '').trim().toLowerCase()));
@@ -2859,6 +2901,14 @@ function downloadInvoiceDoc() {
     return [loadNumber, bol, dateVal, driver, brokerCell, priceCell, formatUsd(commissionValue)];
   });
 
+  let commissionPctLabel = formatCommissionPercent(invoiceDriver ? invoiceDriver.commission : null);
+  if (!commissionPctLabel && subtotalGross > 0) {
+    const derivedPct = Math.round((dispatchFeeTotal / subtotalGross) * 10000) / 100;
+    commissionPctLabel = formatCommissionPercent(derivedPct);
+  }
+  const commissionColumnHeader = commissionPctLabel ? `${commissionPctLabel}%` : 'Fee %';
+  const dispatchFeeLabel = commissionPctLabel ? `Dispatch Fee (${commissionPctLabel}%):` : 'Dispatch Fee:';
+
   if (!window.jspdf || !window.jspdf.jsPDF) {
     showToast('PDF library not available — please reload the page', 'error');
     return;
@@ -2884,7 +2934,7 @@ function downloadInvoiceDoc() {
   // Two blank lines before table (startY 154 = 114 + ~40pt gap)
   pdf.autoTable({
     startY: 154,
-    head: [['Load #', 'BOL', 'Date', 'Driver', 'Broker', 'Price', '6%']],
+    head: [['Load #', 'BOL', 'Date', 'Driver', 'Broker', 'Price', commissionColumnHeader]],
     body: tableRows,
     theme: 'grid',
     styles: {
@@ -2928,7 +2978,7 @@ function downloadInvoiceDoc() {
   pdf.setFontSize(11);
   pdf.text('Subtotal Gross Loads:', left, totalsY + 8);
   pdf.text(formatUsd(subtotalGross), left + 320, totalsY + 8, { align: 'right' });
-  pdf.text('Dispatch Fee (6%):', left, totalsY + 26);
+  pdf.text(dispatchFeeLabel, left, totalsY + 26);
   pdf.text(formatUsd(dispatchFeeTotal), left + 320, totalsY + 26, { align: 'right' });
   pdf.line(left, totalsY + 36, left + 320, totalsY + 36);
 
