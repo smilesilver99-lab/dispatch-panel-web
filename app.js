@@ -1513,7 +1513,7 @@ function renderDashboardStats() {
           <div class="driver-summary-head">
             <div class="driver-summary-avatar" style="${avatarStyle}">${initials(driver.nombre)}</div>
             <div class="driver-summary-copy">
-              <span class="driver-summary-name">${escapeHtml(driver.nombre)}</span>
+              <button type="button" class="driver-summary-name driver-name-link" onclick="event.stopPropagation(); openDriverInfoModal('${driverIdSafe}')">${escapeHtml(driver.nombre)}</button>
             </div>
           </div>
           <div class="driver-summary-block">
@@ -1995,6 +1995,210 @@ async function openDriverEditModal(driverId) {
 
   setupDriverCityAutocomplete();
 
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+async function fetchCompanyRecord(companyName) {
+  const name = String(companyName || '').trim();
+  if (!supabaseClient || !name) return null;
+  try {
+    const { data, error } = await supabaseClient.from('companies').select('*').ilike('company_name', name).maybeSingle();
+    if (!error && data) return data;
+  } catch (e) {}
+  return null;
+}
+
+function parseJsonField(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch (e) { return null; }
+}
+
+function normalizeJsonEntries(value) {
+  const parsed = parseJsonField(value);
+  if (!parsed) return [];
+  if (Array.isArray(parsed)) return parsed.filter((item) => item && typeof item === 'object');
+  if (typeof parsed === 'object') return [parsed];
+  return [];
+}
+
+function driverInfoIcon(pathD, size = 13) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">${pathD}</svg>`;
+}
+
+const DRIVER_INFO_ICONS = {
+  phone: driverInfoIcon('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+  email: driverInfoIcon('<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22,6 12,13 2,6"/>'),
+  truck: driverInfoIcon('<path d="M1 3h13v13H1z"/><path d="M14 8h4l4 4v4h-8V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
+  vin: driverInfoIcon('<rect x="3" y="7" width="18" height="10" rx="1"/><path d="M7 11v3M11 11v3M15 11v3"/>'),
+  fax: driverInfoIcon('<path d="M6 9V3h12v6"/><path d="M6 18h12v3H6z"/><rect x="4" y="9" width="16" height="9" rx="1"/>'),
+  mapPin: driverInfoIcon('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
+  route: driverInfoIcon('<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h8a4 4 0 0 0 4-4V9a4 4 0 0 0-4-4H9"/>')
+};
+
+function toTitleCase(value) {
+  return String(value || '').trim().toLowerCase().replace(/(^|\s|-)([a-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
+}
+
+function renderOperatingCities(rawValue) {
+  const text = Array.isArray(rawValue) ? rawValue.join(',') : String(rawValue || '').trim();
+  if (!text) return '';
+  return `<div class="driver-operating-cities">${DRIVER_INFO_ICONS.route}<span class="driver-cities-text">${escapeHtml(text)}</span></div>`;
+}
+
+function renderContactsBlock(rawValue) {
+  const entries = normalizeJsonEntries(rawValue);
+  if (entries.length === 0) return '<p class="driver-info-empty">No contacts on file.</p>';
+
+  return entries.map((contact) => {
+    const name = contact.name || contact.contact_name || '';
+    const phone = contact.phone || contact.number || '';
+    const cell = contact.cell && contact.cell !== phone ? contact.cell : '';
+    const fax = contact.fax || '';
+    const badge = contact.badge || contact.tag || contact.label || contact.note || '';
+    const emails = Array.isArray(contact.emails) ? contact.emails : (contact.email ? [contact.email] : []);
+    const badgeHtml = badge ? `<span class="badge-mini">${escapeHtml(toTitleCase(badge))}</span>` : '';
+
+    const lines = [];
+    if (phone) lines.push(`<div class="driver-contact-line">${DRIVER_INFO_ICONS.phone}<span>${escapeHtml(name ? `${name}: ` : '')}${escapeHtml(phone)}</span>${badgeHtml}</div>`);
+    if (cell) lines.push(`<div class="driver-contact-line">${DRIVER_INFO_ICONS.phone}<span>Cell: ${escapeHtml(cell)}</span></div>`);
+    if (fax) lines.push(`<div class="driver-contact-line">${DRIVER_INFO_ICONS.fax}<span>Fax: ${escapeHtml(fax)}</span></div>`);
+    emails.forEach((email) => {
+      lines.push(`<div class="driver-contact-line">${DRIVER_INFO_ICONS.email}<span>${escapeHtml(email)}</span>${!phone && !cell ? badgeHtml : ''}</div>`);
+    });
+    return lines.join('') || '';
+  }).join('') || '<p class="driver-info-empty">No contacts on file.</p>';
+}
+
+function renderPlatformAccess(rawValue) {
+  const parsed = parseJsonField(rawValue);
+  if (!parsed) return '<p class="driver-info-empty">No portal access saved.</p>';
+
+  let entries = [];
+  if (Array.isArray(parsed)) {
+    entries = parsed.filter((item) => item && typeof item === 'object').map((item) => ({
+      platform: item.platform || item.name || item.site || 'Portal',
+      username: item.username || item.user || item.login || '',
+      password: item.password || item.pass || ''
+    }));
+  } else if (typeof parsed === 'object') {
+    entries = Object.keys(parsed).map((key) => {
+      const value = parsed[key];
+      if (value && typeof value === 'object') {
+        return { platform: key, username: value.username || value.user || '', password: value.password || value.pass || '' };
+      }
+      return { platform: key, username: String(value || ''), password: '' };
+    });
+  }
+
+  if (entries.length === 0) return '<p class="driver-info-empty">No portal access saved.</p>';
+  return `<div class="driver-platform-list">${entries.map((entry) => `
+    <div class="driver-platform-entry">
+      <span class="driver-platform-name">${escapeHtml(entry.platform)}</span>
+      <span class="driver-platform-meta">${entry.username ? `<span class="driver-platform-user">User: ${escapeHtml(entry.username)}</span>` : ''}${entry.password ? `<span class="driver-platform-pass">Pass: ${escapeHtml(entry.password)}</span>` : ''}${!entry.username && !entry.password ? '<span class="driver-platform-user">—</span>' : ''}</span>
+    </div>`).join('')}</div>`;
+}
+
+async function openDriverInfoModal(driverReference) {
+  const rawReference = String(driverReference || '').trim();
+  let driver = DRIVERS.find((item) => String(item.id) === rawReference)
+    || DRIVERS.find((item) => String(item.name || '').trim().toLowerCase() === rawReference.toLowerCase());
+
+  if (!driver && supabaseClient) {
+    try {
+      await loadDrivers(true);
+      driver = DRIVERS.find((item) => String(item.id) === rawReference)
+        || DRIVERS.find((item) => String(item.name || '').trim().toLowerCase() === rawReference.toLowerCase());
+    } catch (e) {}
+  }
+
+  if (!driver) {
+    showToast('Driver information not found', 'error');
+    return;
+  }
+
+  const driverName = String(driver.name || '—').trim() || '—';
+  const company = await fetchCompanyRecord(driver.company_name);
+
+  const companyName = (company && company.company_name) || driver.company_name || '';
+  const companyType = company && company.company_type ? String(company.company_type).trim() : '';
+  const companyAddress = company && company.address ? String(company.address).trim() : '';
+  const companyEmail = (company && company.company_email) || '';
+
+  try { document.getElementById('modal-panel').classList.add('modal-panel-wide'); document.getElementById('modal-panel').classList.remove('modal-panel-load-details'); } catch (e) {}
+  openModalCargaId = null;
+  openDriverEditId = null;
+  document.getElementById('modal-title').textContent = '';
+  document.getElementById('modal-subtitle').textContent = '';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="driver-info-modal">
+      <div class="driver-info-header">
+        <div class="driver-info-avatar" style="${getDriverAvatarStyle(driver.id || driverName)}">${initials(driverName)}</div>
+        <div class="driver-info-name-block">
+          <h2 class="driver-info-name">${escapeHtml(driverName)}</h2>
+          ${driver.status ? `<span class="badge badge-lg ${String(driver.status).toLowerCase() === 'active' ? 'badge-confirmada' : 'badge-cancelada'}">${escapeHtml(driver.status)}</span>` : ''}
+        </div>
+      </div>
+
+      <div class="driver-info-columns">
+        <div class="driver-info-col">
+          <div class="driver-info-section">
+            <div class="driver-info-section-title">Driver Details</div>
+            <div class="driver-detail-grid">
+              <span class="driver-detail-item">${DRIVER_INFO_ICONS.phone}${escapeHtml(driver.phone_number || '—')}</span>
+              <span class="driver-detail-item">${DRIVER_INFO_ICONS.email}${escapeHtml(driver.email || '—')}</span>
+              <span class="driver-detail-item">${DRIVER_INFO_ICONS.truck}Truck #: ${escapeHtml(driver.truck_number || '—')}</span>
+              <span class="driver-detail-item">${DRIVER_INFO_ICONS.vin}VIN: ${escapeHtml(driver.vin_number || '—')}</span>
+            </div>
+          </div>
+
+          <div class="driver-info-section">
+            <div class="driver-info-section-title">Company Information</div>
+            ${companyName ? `
+              <div class="driver-company-name-row">
+                <span class="driver-company-name">${escapeHtml(companyName)}</span>
+                ${companyType ? `<span class="badge-mini badge-mini--type">${escapeHtml(companyType)}</span>` : ''}
+              </div>
+              ${companyAddress ? `<div class="driver-address-line">${DRIVER_INFO_ICONS.mapPin}<span>${escapeHtml(companyAddress)}</span></div>` : ''}
+              <div class="driver-quick-grid">
+                <div class="driver-quick-tile"><span class="driver-quick-label">MC#</span><span class="driver-quick-value">${escapeHtml(String((company && company.mc) || '—'))}</span></div>
+                <div class="driver-quick-tile"><span class="driver-quick-label">DOT#</span><span class="driver-quick-value">${escapeHtml(String((company && company.dot) || '—'))}</span></div>
+                <div class="driver-quick-tile"><span class="driver-quick-label">EIN</span><span class="driver-quick-value">${escapeHtml(String((company && company.ein) || '—'))}</span></div>
+                <div class="driver-quick-tile"><span class="driver-quick-label">RMIS ID</span><span class="driver-quick-value">${escapeHtml(String((company && company.rmis_id) || '—'))}</span></div>
+              </div>
+              ${renderOperatingCities(company && company.operating_cities)}
+              <div class="driver-platform-box">
+                <div class="driver-contact-line">${DRIVER_INFO_ICONS.email}<span>${escapeHtml(companyEmail || '—')}</span></div>
+                <div class="driver-platform-title">Passwords / Portals</div>
+                ${renderPlatformAccess(company && company.platform_access)}
+              </div>
+            ` : `<p class="driver-info-empty">No company information saved for this driver.</p>`}
+          </div>
+        </div>
+
+        <div class="driver-info-col">
+          <div class="driver-info-section">
+            <div class="driver-info-section-title">Factoring${company && company.factoring_name ? `: ${escapeHtml(company.factoring_name)}` : ''}</div>
+            ${company && company.factoring_address ? `<div class="driver-address-line">${DRIVER_INFO_ICONS.mapPin}<span>${escapeHtml(company.factoring_address)}</span></div>` : ''}
+            <div class="driver-contact-list">${renderContactsBlock(company && company.factoring_contacts)}</div>
+          </div>
+
+          <div class="driver-info-section">
+            <div class="driver-info-section-title">Insurance${company && company.insurance_name ? `: ${escapeHtml(company.insurance_name)}` : ''}</div>
+            ${company && company.insurance_type ? `<div class="driver-info-subtitle">${escapeHtml(company.insurance_type)}</div>` : ''}
+            ${company && company.insurance_address ? `<div class="driver-address-line">${DRIVER_INFO_ICONS.mapPin}<span>${escapeHtml(company.insurance_address)}</span></div>` : ''}
+            ${company && company.insurance_policy_number ? `
+              <div class="driver-policy-highlight">
+                <span class="driver-policy-label">Policy Number</span>
+                <span class="driver-policy-value">${escapeHtml(company.insurance_policy_number)}</span>
+              </div>` : ''}
+            <div class="driver-contact-list">${renderContactsBlock(company && company.insurance_contacts)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
   document.getElementById('modal-overlay').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
 }
@@ -2564,7 +2768,11 @@ async function handleDriverEditSubmit(event, driverId) {
     }
   })();
   const clearWaypointsFlag = fd.get('clear_waypoints');
-  const waypointsPayload = clearWaypointsFlag ? [] : (enteredWaypoints.length > 0 ? enteredWaypoints : existingWaypoints);
+  const waypointsBuilder = form.querySelector('.driver-stops-builder');
+  const waypointsEditorOpen = waypointsBuilder && !waypointsBuilder.classList.contains('hidden');
+  const waypointsPayload = clearWaypointsFlag || (waypointsEditorOpen && enteredWaypoints.length === 0)
+    ? []
+    : (enteredWaypoints.length > 0 ? enteredWaypoints : existingWaypoints);
 
   const payload = {
     name: (fd.get('name') || '').trim(),
@@ -2649,13 +2857,17 @@ function renderTruckerCards() {
       const avatarStyle = getDriverAvatarStyle(truckerKey || cam.nombre);
       const flexWeight = Math.max(1, cargas.length || 1);
       const flexStyle = allSingles ? '' : `style="flex: ${flexWeight} 1 320px; min-width: 220px;"`;
+      const driverReference = cargas[0] && cargas[0].camionero_id
+        ? String(cargas[0].camionero_id)
+        : String(cam.nombre || '');
+      const driverReferenceSafe = driverReference.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
       return `
         <div class="trucker-section" ${flexStyle}>
           <div class="trucker-header">
             <div class="trucker-avatar" style="${avatarStyle}">${initials(cam.nombre)}</div>
             <div class="trucker-info">
-              <span class="trucker-name">${cam.nombre}</span>
+              <button type="button" class="trucker-name driver-name-link" onclick="event.stopPropagation(); openDriverInfoModal('${driverReferenceSafe}')">${escapeHtml(cam.nombre)}</button>
             </div>
             <span class="trucker-count">${cargas.length} carga${cargas.length !== 1 ? "s" : ""}</span>
           </div>
@@ -3635,12 +3847,34 @@ function openModal(cargaId) {
         <div class="modal-info-item modal-dates-grid" style="margin-top:8px;">
           <div class="modal-date-col">
             <span class="modal-date-col-label">INVOICE</span>
-            <span class="modal-date-col-date">${c.invoice_number || '—'}</span>
+            <div class="modal-inline-field">
+              <div class="modal-inline-display">
+                <span class="modal-date-col-date" data-load-detail-display="invoice_number">${escapeHtml(c.invoice_number || '—')}</span>
+                <button class="modal-inline-edit-trigger" type="button" title="Edit invoice number" aria-label="Edit invoice number" onclick="toggleLoadDetailEdit(this)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                </button>
+              </div>
+              <div class="modal-inline-edit hidden">
+                <input class="modal-inline-input" type="text" value="${escapeHtml(c.invoice_number || '')}" data-load-detail-field="invoice_number" placeholder="Invoice number" aria-label="Invoice number" />
+                <button class="modal-inline-save" type="button" title="Save invoice number" aria-label="Save invoice number" onclick="saveLoadDetailField('${c.id}', 'invoice_number', this)">✓</button>
+              </div>
+            </div>
           </div>
           <div class="modal-date-divider"></div>
           <div class="modal-date-col">
             <span class="modal-date-col-label">BOL</span>
-            <span class="modal-date-col-date">${c.bol_number || '—'}</span>
+            <div class="modal-inline-field">
+              <div class="modal-inline-display">
+                <span class="modal-date-col-date" data-load-detail-display="bol_number">${escapeHtml(c.bol_number || '—')}</span>
+                <button class="modal-inline-edit-trigger" type="button" title="Edit BOL number" aria-label="Edit BOL number" onclick="toggleLoadDetailEdit(this)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                </button>
+              </div>
+              <div class="modal-inline-edit hidden">
+                <input class="modal-inline-input" type="text" value="${escapeHtml(c.bol_number || '')}" data-load-detail-field="bol_number" placeholder="BOL number" aria-label="BOL number" />
+                <button class="modal-inline-save" type="button" title="Save BOL number" aria-label="Save BOL number" onclick="saveLoadDetailField('${c.id}', 'bol_number', this)">✓</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-load-id-box" style="margin-top:8px;">
@@ -3857,14 +4091,14 @@ function formatDocFieldValue(nextDocs, originalValue) {
   return nextDocs.length === 1 ? nextDocs[0] : JSON.stringify(nextDocs);
 }
 
-async function updateLoadDocField(cargaId, field, value) {
+async function updateLoadDocField(cargaId, field, value, extraFields = {}) {
   if (!supabaseClient || !cargaId || !field) throw new Error('Supabase client unavailable');
 
   for (const table of ['loads_data', 'past_loads_data']) {
     try {
       const { data, error } = await supabaseClient
         .from(table)
-        .update({ [field]: value })
+        .update({ [field]: value, ...extraFields })
         .eq('load_id', cargaId)
         .select('load_id')
         .limit(1);
@@ -3874,6 +4108,78 @@ async function updateLoadDocField(cargaId, field, value) {
   }
 
   throw new Error('Load record not found');
+}
+
+async function saveLoadDetailField(cargaId, field, button) {
+  const allowedFields = {
+    invoice_number: ['invoice', 'invoice_number', 'invoice_no', 'invoiceId'],
+    bol_number: ['BOL', 'bol', 'bol_number', 'bill_of_lading', 'bill_of_lading_number']
+  };
+  const candidates = allowedFields[field];
+  const input = button && button.parentElement
+    ? button.parentElement.querySelector(`[data-load-detail-field="${field}"]`)
+    : null;
+  if (!candidates || !input || !cargaId || !supabaseClient) return;
+
+  const value = input.value.trim() || null;
+  button.disabled = true;
+
+  try {
+    let saved = false;
+    for (const table of ['loads_data', 'past_loads_data']) {
+      const { data: row, error: selectError } = await supabaseClient
+        .from(table)
+        .select('*')
+        .eq('load_id', cargaId)
+        .maybeSingle();
+      if (selectError) continue;
+      if (!row) continue;
+
+      const targetColumn = candidates.find((column) => Object.prototype.hasOwnProperty.call(row, column)) || candidates[0];
+      const { error: updateError } = await supabaseClient
+        .from(table)
+        .update({ [targetColumn]: value })
+        .eq('load_id', cargaId);
+      if (updateError) throw updateError;
+
+      saved = true;
+      break;
+    }
+
+    if (!saved) throw new Error('Load record not found');
+
+    const carga = CARGAS.find((item) => item.id === cargaId);
+    if (carga) carga[field] = value;
+    const wrapper = button.closest('.modal-inline-field');
+    const display = wrapper ? wrapper.querySelector(`[data-load-detail-display="${field}"]`) : null;
+    const editor = wrapper ? wrapper.querySelector('.modal-inline-edit') : null;
+    if (display) display.textContent = value || '—';
+    const displayWrapper = wrapper ? wrapper.querySelector('.modal-inline-display') : null;
+    if (displayWrapper) displayWrapper.classList.remove('hidden');
+    if (editor) editor.classList.add('hidden');
+    applyFilters();
+    showToast(`${field === 'invoice_number' ? 'Invoice' : 'BOL'} number updated`, 'success');
+  } catch (error) {
+    showToast(`Failed to update ${field === 'invoice_number' ? 'invoice' : 'BOL'} number`, 'error');
+    console.error('Error updating Load Details field', error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function toggleLoadDetailEdit(button) {
+  const wrapper = button.closest('.modal-inline-field');
+  if (!wrapper) return;
+  const display = wrapper.querySelector('.modal-inline-display');
+  const editor = wrapper.querySelector('.modal-inline-edit');
+  if (!display || !editor) return;
+  display.classList.add('hidden');
+  editor.classList.remove('hidden');
+  const input = editor.querySelector('.modal-inline-input');
+  if (input) {
+    input.focus();
+    input.select();
+  }
 }
 
 // Update a single `status` or `state` field on the load identified by `load_id`.
@@ -4033,10 +4339,19 @@ async function confirmDeleteDoc() {
   const nextValue = formatDocFieldValue(nextDocs, c[field]);
   const storagePath = getStoragePathFromDoc(fileName);
   const previousValue = c[field];
+  const isRateConfirmation = field === 'rate_conf_url';
+  const documentIdFields = isRateConfirmation
+    ? { file_id: null, rate_drive_id: null }
+    : {};
 
   try {
-    await updateLoadDocField(cargaId, field, nextValue);
+    await updateLoadDocField(cargaId, field, nextValue, documentIdFields);
     c[field] = nextValue;
+
+    if (isRateConfirmation) {
+      c.file_id = null;
+      c.rate_drive_id = null;
+    }
 
     if (field === 'other_doc') {
       c.other_doc = nextValue;
@@ -4531,6 +4846,18 @@ async function openUpload(cargaId, tipo) {
     }
   }
 
+  const uploadType = String(currentUploadTipo || '').toLowerCase();
+  const requiresRateConfirmation = uploadType.includes('bol') || uploadType.includes('other');
+  const hasRateConfirmation = c.rate_conf_url !== null
+    && c.rate_conf_url !== undefined
+    && String(c.rate_conf_url).trim() !== '';
+  if (requiresRateConfirmation && !hasRateConfirmation) {
+    showToast('Upload a Rate Confirmation before uploading a BOL or other document.', 'error');
+    currentUploadCargaId = null;
+    currentUploadTipo = null;
+    return;
+  }
+
   document.getElementById("upload-input").click();
 }
 
@@ -4590,6 +4917,25 @@ async function handleFileUpload() {
   const file = input.files[0];
   const c    = CARGAS.find((x) => x.id === currentUploadCargaId);
   if (!c) return;
+
+  // Rate Confirmations require the load metadata before the document is sent.
+  const uploadType = String(currentUploadTipo || '').toLowerCase();
+  if (uploadType.includes('rate')) {
+    const requiredFields = [
+      { value: c.driver || c.driver_name || c.camionero_id, label: 'driver' },
+      { value: c.pick_up_date_db || c.pick_up_date, label: 'pickup date' },
+      { value: c.invoice_number || c.invoice || c.invoice_no || c.invoiceId, label: 'invoice number' }
+    ];
+    const missingFields = requiredFields
+      .filter((field) => field.value === null || field.value === undefined || String(field.value).trim() === '')
+      .map((field) => field.label);
+
+    if (missingFields.length > 0) {
+      showToast(`Cannot upload Rate Confirmation. Missing: ${missingFields.join(', ')}.`, 'error');
+      input.value = '';
+      return;
+    }
+  }
 
   const suffix = currentUploadCargaId.split("-").pop();
   const docName = `${currentUploadTipo.replace(/\s+/g, "-")}-${suffix}_${file.name}`;
