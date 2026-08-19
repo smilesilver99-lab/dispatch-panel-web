@@ -1067,6 +1067,15 @@ html, body {
 .dp-cell { width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; border:none; background:transparent; cursor:pointer; }
 .dp-cell.empty { background:transparent; cursor:default; }
 .dp-cell.day:hover { background:#f8fafc; transform:translateY(-2px); }
+.dp-cell.is-today {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #0f172a;
+  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.35);
+}
+.dp-cell.is-today:not(.start):not(.end) {
+  font-weight: 700;
+}
 .dp-cell.in-range { background: #e6f0ff; color:#0f172a; }
 .dp-cell.start { background:#2563eb; color:#fff; box-shadow:0 6px 14px rgba(37,99,235,0.12); }
 .dp-cell.end { background:#2563eb; color:#fff; box-shadow:0 6px 14px rgba(37,99,235,0.12); }
@@ -1305,17 +1314,17 @@ html, body {
 }
 .action-toggle:hover { background: #f8fafc; transform: translateY(-1px); }
 .action-dropdown {
-  position: absolute;
-  right: 0;
-  top: 42px;
+  position: fixed !important;
+  z-index: 9999;
   background: #fff;
   border: 1px solid #e6eef8;
   border-radius: 10px;
   box-shadow: 0 12px 28px rgba(2,6,23,0.08);
   min-width: 160px;
-  z-index: 60;
   display: none;
-  padding: 6px 6px;
+  padding: 6px;
+  top: 0;
+  left: 0;
 }
 .action-dropdown.show { display: block; animation: fadeIn 0.12s ease; }
 .dropdown-item {
@@ -1369,6 +1378,26 @@ html, body {
   text-align: center;
   margin-top: 6px;
 }
+
+.mobile-meta-info {
+  display: none;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.15);
+}
+
+.status-dot.badge-pendiente  { background: #d97706; }
+.status-dot.badge-confirmada { background: #16a34a; }
+.status-dot.badge-en-camino  { background: #ea580c; }
+.status-dot.badge-completada { background: #2563eb; }
+.status-dot.badge-retrasada  { background: #dc2626; }
+.status-dot.badge-cancelada  { background: #dc2626; }
 
 .stops-flag {
   display: inline-block;
@@ -1564,6 +1593,17 @@ html, body {
 }
 
 .empty-state p { font-size: 13px; }
+
+/* Eliminar flechas de inputs numéricos */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
 
 /* ============================================================
    MODAL
@@ -2196,15 +2236,18 @@ html, body {
 
 .driver-operating-cities {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-top: 14px;
   margin-bottom: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .driver-operating-cities > svg {
   flex-shrink: 0;
   color: #6b7280;
+  margin-top: 2px;
 }
 
 .driver-cities-text {
@@ -2212,6 +2255,12 @@ html, body {
   color: #374151;
   user-select: all;
   cursor: text;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  flex: 1 1 180px;
 }
 
 .driver-platform-box {
@@ -3598,6 +3647,35 @@ html, body {
     min-width: 0;
     display: block;
     line-height: 1.3;
+  }
+
+  .route-distance {
+    display: none;
+  }
+
+  .mobile-meta-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    min-width: 0;
+    font-size: 13px;
+    color: #64748b;
+    flex-wrap: wrap;
+  }
+
+  .mobile-meta-info .badge-state {
+    font-size: 9px;
+    line-height: 1.2;
+    padding: 2px 7px;
+  }
+
+  .mobile-driver-meta {
+    font-size: 11px;
+    color: #475569;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .route-sep {

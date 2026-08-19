@@ -2042,8 +2042,16 @@ function toTitleCase(value) {
 }
 
 function renderOperatingCities(rawValue) {
-  const text = Array.isArray(rawValue) ? rawValue.join(',') : String(rawValue || '').trim();
+  let text = Array.isArray(rawValue)
+    ? rawValue.join(', ')
+    : String(rawValue || '').trim();
+
   if (!text) return '';
+
+  if (text.includes(',')) {
+    text = text.replace(/\s*,\s*/g, ', ');
+  }
+
   return `<div class="driver-operating-cities">${DRIVER_INFO_ICONS.route}<span class="driver-cities-text">${escapeHtml(text)}</span></div>`;
 }
 
@@ -3455,6 +3463,8 @@ function renderTable() {
         const cam    = c.camionero_id ? getCamionero(c.camionero_id) : null;
         const estado = resolveEstado(c);
         const stateLabel = c.load_state && String(c.load_state).trim() ? String(c.load_state).trim() : '';
+        const driverText = c.driver ? String(c.driver).trim() : '';
+        const showDriverMeta = (estado && String(estado).toLowerCase() !== 'pending') || !!driverText;
         const brokerHtml = `
           <div class="carga-client">${c.cliente || '—'}</div>
           ${c.broker_mc ? `<div class="carga-client-sub">${c.broker_mc}</div>` : ''}
@@ -3464,7 +3474,7 @@ function renderTable() {
 
         return `
           <tr onclick="openModal('${c.id}')">
-            <td><span class="load-id">${c.id}</span></td>
+            <td class="hidden-column-load-id" style="display:none;"><span class="load-id">${c.id}</span></td>
             <td>${brokerHtml}</td>
             <td>
               <div class="route-cell">
@@ -3473,6 +3483,11 @@ function renderTable() {
                 <span class="route-dest">${c.destino}</span>
               </div>
               ${ (c.trip_miles || c.stops) ? `<div class="route-distance">${c.trip_miles ? `${c.trip_miles} mi` : ''}${c.stops ? ` <span class="stops-flag">stops</span>` : ''}</div>` : '' }
+              <div class="mobile-meta-info">
+                <span class="status-dot ${estadoClass(estado)}" aria-label="${escapeHtml(estado)}" title="${escapeHtml(estado)}"></span>
+                ${stateLabel ? `<span class="badge badge-sm badge-state">${escapeHtml(stateLabel)}</span>` : ''}
+                ${showDriverMeta && driverText ? `<span class="mobile-driver-meta">${escapeHtml(driverText)}</span>` : ''}
+              </div>
             </td>
             <td>
               ${c.rate_usd ? `<div class="price-cell">$${c.rate_usd}</div>` : `<div class="price-cell">—</div>`}
@@ -3611,7 +3626,34 @@ function closeAllActionMenus() {
     menu.setAttribute('aria-hidden', 'true');
     const toggle = document.querySelector(`[aria-controls="${menu.id}"]`);
     if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    menu.style.top = '';
+    menu.style.left = '';
+    menu.style.right = '';
+    menu.style.bottom = '';
   });
+}
+
+function positionActionMenu(menu, button) {
+  const rect = button.getBoundingClientRect();
+  const gap = 8;
+  const menuWidth = menu.offsetWidth || 160;
+  const menuHeight = menu.offsetHeight || 220;
+
+  let top = rect.bottom + gap;
+  let left = rect.right - menuWidth;
+
+  if (left < 8) left = 8;
+  if (top + menuHeight > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - menuHeight - gap);
+  }
+  if (left + menuWidth > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - menuWidth - 8);
+  }
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+  menu.style.right = 'auto';
+  menu.style.bottom = 'auto';
 }
 
 function toggleRowActions(event, id) {
@@ -3624,7 +3666,10 @@ function toggleRowActions(event, id) {
     menu.classList.add('show');
     menu.setAttribute('aria-hidden', 'false');
     const toggle = document.querySelector(`[aria-controls="${menu.id}"]`);
-    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', 'true');
+      positionActionMenu(menu, toggle);
+    }
   }
 }
 
@@ -3632,6 +3677,10 @@ function toggleRowActions(event, id) {
 document.addEventListener('click', (e) => {
   closeAllActionMenus();
 });
+
+window.addEventListener('scroll', () => {
+  closeAllActionMenus();
+}, { capture: true });
 
 // =============================================================
 // MODAL – DETALLE DE CARGA
@@ -4818,28 +4867,49 @@ function updateStatus(cargaId, newStatus) {
 // CARGA DE DOCUMENTOS
 // =============================================================
 
+function getRateConfirmationMissingFields(c) {
+  if (!c) return ['load'];
+
+  const missing = [];
+  const driverValue = c.driver || c.driver_name || c.camionero_id;
+  const pickupValue = c.pick_up_date_db || c.pick_up_date || c.fecha_recogida;
+  const invoiceValue = c.invoice_number || c.invoice || c.invoice_no || c.invoiceId;
+
+  if (driverValue === null || driverValue === undefined || String(driverValue).trim() === '') {
+    missing.push('driver');
+  }
+  if (pickupValue === null || pickupValue === undefined || String(pickupValue).trim() === '') {
+    missing.push('pickup date');
+  }
+  if (invoiceValue === null || invoiceValue === undefined || String(invoiceValue).trim() === '') {
+    missing.push('invoice number');
+  }
+
+  return missing;
+}
+
 async function openUpload(cargaId, tipo) {
   currentUploadCargaId = cargaId;
   currentUploadTipo    = tipo;
+
+  const c = CARGAS.find((x) => x.id === cargaId);
+  if (!c) return;
 
   // Refresh authoritative fields (including file ids) before opening the file picker
   if (supabaseClient) {
     try {
       const row = await fetchLoadRow(cargaId);
       if (row) {
-        const c = CARGAS.find((x) => x.id === cargaId);
-        if (c) {
-          c.rate_conf_url = row.rate_conf_url || row.rate_conf || row.rate_url || row.rate_confirmation_url || c.rate_conf_url;
-          c.bol_url = row.bol_url || row.bill_of_lading_url || row.bol_link || c.bol_url;
-          c.other_doc = row.other_doc || row.documents || row.documentos || c.other_doc;
+        c.rate_conf_url = row.rate_conf_url || row.rate_conf || row.rate_url || row.rate_confirmation_url || c.rate_conf_url;
+        c.bol_url = row.bol_url || row.bill_of_lading_url || row.bol_link || c.bol_url;
+        c.other_doc = row.other_doc || row.documents || row.documentos || c.other_doc;
 
-          // file identifier columns may be named differently across databases; prefer the common variants
-          c.file_id = row.file_id || row.fileid || row.rate_file_id || row.bol_file_id || row.rate_drive_id || row.bol_drive_id || row.rate_id || row.bol_id || c.file_id || null;
-          c.rate_file_id = row.rate_file_id || row.rate_file || row.rate_drive_id || row.rate_id || c.rate_file_id || null;
-          c.bol_file_id = row.bol_file_id || row.bol_file || row.bol_drive_id || row.bol_id || c.bol_file_id || null;
-          c.rate_drive_id = row.rate_drive_id || row.rate_drive || c.rate_drive_id || null;
-          c.bol_drive_id = row.bol_drive_id || row.bol_drive || c.bol_drive_id || null;
-        }
+        // file identifier columns may be named differently across databases; prefer the common variants
+        c.file_id = row.file_id || row.fileid || row.rate_file_id || row.bol_file_id || row.rate_drive_id || row.bol_drive_id || row.rate_id || row.bol_id || c.file_id || null;
+        c.rate_file_id = row.rate_file_id || row.rate_file || row.rate_drive_id || row.rate_id || c.rate_file_id || null;
+        c.bol_file_id = row.bol_file_id || row.bol_file || row.bol_drive_id || row.bol_id || c.bol_file_id || null;
+        c.rate_drive_id = row.rate_drive_id || row.rate_drive || c.rate_drive_id || null;
+        c.bol_drive_id = row.bol_drive_id || row.bol_drive || c.bol_drive_id || null;
       }
     } catch (e) {
       console.debug('openUpload: failed to refresh load row', e);
@@ -4847,6 +4917,17 @@ async function openUpload(cargaId, tipo) {
   }
 
   const uploadType = String(currentUploadTipo || '').toLowerCase();
+
+  if (uploadType.includes('rate')) {
+    const missingFields = getRateConfirmationMissingFields(c);
+    if (missingFields.length > 0) {
+      showToast(`Cannot upload Rate Confirmation. Missing: ${missingFields.join(', ')}.`, 'error');
+      currentUploadCargaId = null;
+      currentUploadTipo = null;
+      return;
+    }
+  }
+
   const requiresRateConfirmation = uploadType.includes('bol') || uploadType.includes('other');
   const hasRateConfirmation = c.rate_conf_url !== null
     && c.rate_conf_url !== undefined
@@ -4921,15 +5002,7 @@ async function handleFileUpload() {
   // Rate Confirmations require the load metadata before the document is sent.
   const uploadType = String(currentUploadTipo || '').toLowerCase();
   if (uploadType.includes('rate')) {
-    const requiredFields = [
-      { value: c.driver || c.driver_name || c.camionero_id, label: 'driver' },
-      { value: c.pick_up_date_db || c.pick_up_date, label: 'pickup date' },
-      { value: c.invoice_number || c.invoice || c.invoice_no || c.invoiceId, label: 'invoice number' }
-    ];
-    const missingFields = requiredFields
-      .filter((field) => field.value === null || field.value === undefined || String(field.value).trim() === '')
-      .map((field) => field.label);
-
+    const missingFields = getRateConfirmationMissingFields(c);
     if (missingFields.length > 0) {
       showToast(`Cannot upload Rate Confirmation. Missing: ${missingFields.join(', ')}.`, 'error');
       input.value = '';
@@ -6064,6 +6137,7 @@ function renderDatePicker() {
   if (!overlay) return;
   const monthDate = new Date(dateRangeState.visibleMonth || new Date());
   const monthLabel = monthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const today = new Date();
   let html = `<div class="dp-card"><div class="dp-header"><button class="dp-prev" onclick="dpChangeMonth(-1)">‹</button><div class="dp-month">${monthLabel}</div><button class="dp-next" onclick="dpChangeMonth(1)">›</button></div>`;
   html += '<div class="dp-weekdays">';
   const days = ['Su','Mo','Tu','We','Th','Fr','Sa'];
@@ -6075,16 +6149,17 @@ function renderDatePicker() {
   const last = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
   const startWeek = first.getDay();
   for (let i = 0; i < startWeek; i++) html += `<div class="dp-cell empty"></div>`;
-  for (let d = 1; d <= last.getDate(); d++) {
-    const dt = new Date(monthDate.getFullYear(), monthDate.getMonth(), d);
+  for (let day = 1; day <= last.getDate(); day++) {
+    const dt = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
     const iso = formatDateISO(dt);
     const isStart = dateRangeState.start === iso;
     const isEnd = dateRangeState.end === iso;
+    const isToday = day === today.getDate() && monthDate.getMonth() === today.getMonth() && monthDate.getFullYear() === today.getFullYear();
     let inRange = false;
     if (dateRangeState.start && dateRangeState.end) {
       inRange = (iso >= dateRangeState.start && iso <= dateRangeState.end);
     }
-    html += `<button class="dp-cell day ${isStart? 'start':''} ${isEnd? 'end':''} ${inRange? 'in-range':''}" data-date="${iso}" onclick="dpOnDayClick('${iso}', event)">${d}</button>`;
+    html += `<button class="dp-cell day ${isStart ? 'start' : ''} ${isEnd ? 'end' : ''} ${inRange ? 'in-range' : ''} ${isToday ? 'is-today' : ''}" data-date="${iso}" onclick="dpOnDayClick('${iso}', event)">${day}</button>`;
   }
   html += '</div>';
   // Only show calendar grid — remove selected-range display and action buttons per request
@@ -6132,6 +6207,14 @@ function dpClear() {
 }
 
 function clearDateRange() { dpClear(); }
+
+// Prevenir que el scroll cambie los valores de los inputs numéricos
+document.addEventListener('wheel', function(event) {
+  const active = document.activeElement;
+  if (active && active.type === 'number') {
+    active.blur();
+  }
+}, { passive: true });
 
 function formatDateISO(d) {
   const dt = new Date(d);
