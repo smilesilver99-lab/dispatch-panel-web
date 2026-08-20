@@ -27,6 +27,48 @@ let isLoadingLoads = false;
 let loadsFetched = false;
 let navigationRefreshToken = 0;
 
+// Local cache so reopening/reloading the app doesn't wait on a full remote refetch
+const REMOTE_CACHE_KEY = 'despachoweb_loads_cache_v1';
+const REMOTE_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // treat cache as fresh for 5 minutes
+const REMOTE_CACHE_MAX_ITEMS = 200; // only the initial fast batch is cached, never the full history
+
+// Snapshot of the last fast (recent-loads-only) fetch; kept separate from CARGAS because
+// CARGAS may later hold the full multi-thousand row history after the background sync.
+let lastFastBatchSnapshot = [];
+
+function saveRemoteCache() {
+  try {
+    // Cap the snapshot so a full background sync (thousands of rows) never blows the localStorage quota.
+    const snapshot = lastFastBatchSnapshot.length > 0
+      ? lastFastBatchSnapshot.slice(0, REMOTE_CACHE_MAX_ITEMS)
+      : CARGAS.slice(0, REMOTE_CACHE_MAX_ITEMS);
+    localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify({
+      cargas: snapshot,
+      camioneros: CAMIONEROS,
+      savedAt: Date.now()
+    }));
+  } catch (e) {
+    // cache is a best-effort optimization (e.g. localStorage quota); safe to ignore
+    console.debug('saveRemoteCache: unable to persist cache', e);
+  }
+}
+
+function loadRemoteCache() {
+  try {
+    const raw = localStorage.getItem(REMOTE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.cargas)) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function isRemoteCacheFresh(cache) {
+  return !!cache && (Date.now() - (cache.savedAt || 0)) < REMOTE_CACHE_MAX_AGE_MS;
+}
+
 // =============================================================
 // ESTADO DE LA APP
 // =============================================================
@@ -230,7 +272,35 @@ async function init() {
   // initialize multi-select dropdowns labels and outside-click closer
   try { refreshFilterDropdownLabels(); } catch (e) {}
   document.addEventListener('click', () => { closeAllMultiDropdowns(); });
-  // Attempt to load remote data; show loading state until fetch completes
+
+  const cache = loadRemoteCache();
+  if (cache && cache.cargas.length > 0) {
+    // Instant paint from cache (0ms); validate against Supabase and top off history in the background.
+    CARGAS.length = 0; CARGAS.push(...cache.cargas);
+    CAMIONEROS.length = 0; CAMIONEROS.push(...(cache.camioneros || []));
+    populateCamioneroFilter();
+    isLoadingLoads = false;
+    loadsFetched = true;
+    renderDashboard();
+    renderCargas();
+
+    loadRemoteData()
+      .then(() => loadDrivers(true))
+      .then(() => {
+        renderDashboard();
+        if (currentView === 'cargas') renderCargas();
+      })
+      .catch((e) => console.debug('Background refresh failed', e))
+      .finally(() => {
+        syncAllLoadsInBackground().then(() => {
+          renderDashboard();
+          if (currentView === 'cargas') renderCargas();
+        }).catch((e) => console.debug('Background full sync failed', e));
+      });
+    return;
+  }
+
+  // No cache available yet: fetch the most recent loads first for an instant paint.
   isLoadingLoads = true;
   loadsFetched = false;
   renderCargas();
@@ -239,8 +309,197 @@ async function init() {
   isLoadingLoads = false;
   loadsFetched = true;
   renderDashboard();
+
+  // Top off the rest of the history quietly, without blocking the UI the user already sees.
+  syncAllLoadsInBackground().then(() => {
+    renderDashboard();
+    if (currentView === 'cargas') renderCargas();
+  }).catch((e) => console.debug('Background full sync failed', e));
 }
 
+// Map a raw Supabase row (from loads_data / past_loads_data) into the app's load schema.
+function mapLoadRow(row, fallbackIndex) {
+  // Prefer explicit origin/destination columns when present. Fallback to parsing `origen`/`destino` strings.
+  const [parsedOrigCity, parsedOrigState] = splitCityState(row.origen || '');
+  const [parsedDestCity, parsedDestState] = splitCityState(row.destino || '');
+  const originCityVal = row.origin_city || parsedOrigCity || '';
+  const originStateVal = row.origin_state || parsedOrigState || '';
+  const destCityVal = row.dest_city || parsedDestCity || '';
+  const destStateVal = row.dest_state || parsedDestState || '';
+
+  // detect / generate stable id for the load (prefer common id fields from different schemas)
+  let detectedId = row.load_id || row.loadId || row.loadid || row.id || row.ID || row.load_number || row.load_number_str || null;
+  const genId = `sup-${fallbackIndex + 1}`;
+  const finalId = detectedId || genId;
+  const mapped = {
+    // Use detected id when available otherwise a generated unique id
+    id: String(finalId),
+    // preserve original DB load_id when available (may be stored under several names)
+    load_id: row.load_id || row.loadId || row.loadid || row.load_number || row.load_number_str || row.ID || row.id || null,
+    cliente: row.company_name || row.broker || '',
+    broker_mc: row.broker_mc || '',
+    // normalized origin/destination display + explicit origin/destination fields
+    origen: originCityVal ? `${originCityVal}${originStateVal ? ', ' + originStateVal : ''}` : (row.origen || ''),
+    destino: destCityVal ? `${destCityVal}${destStateVal ? ', ' + destStateVal : ''}` : (row.destino || ''),
+    origin_city: originCityVal || null,
+    origin_state: originStateVal || null,
+    dest_city: destCityVal || null,
+    dest_state: destStateVal || null,
+    driver: row.driver || null,
+    camionero_id: row.driver_id || null,
+    estado: row.status || row.load_status || row.estado || 'Pending',
+    // pickup fields
+    pick_up_date: row.pick_up_date || row.pickup_date || row.fecha_recogida || '',
+    pick_up_date_db: row.pick_up_date || '',
+    pick_up_time: row.pick_up_time || row.pickup_time || '',
+    // expected pickup / delivery times (various possible column names)
+    pick_up_expected_time: row.expected_pick_up || row.expected_pickup || row.pickup_expected_time || row.pick_up_expected_time || row.pick_up_expected || null,
+    delivery_expected_time: row.expected_delivery || row.expecteddelivery || row.expected_delivery_time || row.delivery_expected_time || row.delivery_expected || null,
+    availability: row.availability || row.availability_window || row.availability_range || null,
+    fecha_recogida: row.pick_up_date || row.pickup_date || row.fecha_recogida || '',
+    fecha_entrega: row.delivery_date || row.fecha_entrega || '',
+    delivery_date: row.delivery_date || row.fecha_entrega || '',
+    delivery_date_db: row.delivery_date || '',
+    delivery_time: row.delivery_time || row.delivery_time_col || row.delivery_time || '',
+    // weight / length / pallets (map common column names, prefer max_* when available)
+    max_weight_lbs: row.max_weight_lbs || row.max_weight || row.weight_lbs || row.weight || row.peso || null,
+    weight: (row.max_weight_lbs || row.max_weight || row.weight || row.peso || ''),
+    max_length_ft: row.max_length_ft || row.length_ft || row.length || null,
+    length_ft: (row.max_length_ft || row.length_ft || row.length || ''),
+    pallets: row.pallets || row.pallet_count || row.num_pallets || null,
+    tipo: row.load_type || row.tipo || '',
+    documentos: row.documents || row.documentos || [],
+    other_doc: row.other_doc || null,
+      rate_usd: row.rate_usd || row.rate || null,
+    net_price: row.net_price ?? null,
+    commission: row['commission_ %'] ?? row['commission_%'] ?? row.commission ?? row.commision ?? row.commission_pct ?? row.commission_percentage ?? null,
+    estimated_rpm: row.estimated_rpm || row.est_rpm || row.rpm_estimated || null,
+    capacity: normalizeCapacityType(row.capacity_type || row.capacity || row.capacity_type_code || row.capacityType || null),
+    trip_miles: row.trip_miles || row.miles || row.distance || null,
+    stops: row.stops || null,
+    notas: row.notes || row.notas || '',
+    comments: row.comments || row.comment || '',
+    origin_deadhead: row.origin_deadhead || row.orig_deadhead || row.deadhead_origin || null,
+    dest_deadhead: row.dest_deadhead || row.destination_deadhead || row.deadhead_dest || null,
+    contact_email: row.contact_email || row.email || null,
+    contact_phone: row.contact_phone || row.phone || null,
+      contact_phone_ext: row.contact_phone_ext || row.phone_ext || null,
+    // invoice / BOL / custom load state
+    invoice_number: row.invoice || row.invoice_number || row.invoice_no || row.invoiceId || null,
+    bol_number: row.BOL || row.bol || row.bol_number || row.bill_of_lading || row.bill_of_lading_number || null,
+    load_state: row.state || row.load_state || row.load_stage || row.stage || null,
+      equipment_type: row.equipment_type || row.eq_type || row.equipment_code || row.equipment || row.trailer_type || row.trailer_code || null,
+    // upload URLs (may exist in different column names across datasets)
+    rate_conf_url: row.rate_conf_url || row.rate_conf || row.rate_confirmation_url || row.rate_url || row.rate_conf_link || null,
+    // preserve any document-driver IDs if present in source tables
+    rate_drive_id: row.rate_drive_id || row.rate_driver_id || row.rate_doc_id || row.rate_id || row.rate_drive || row.rate_driveid || null,
+    bol_drive_id: row.bol_drive_id || row.bol_driver_id || row.bol_doc_id || row.bol_id || row.bol_drive || row.bol_driveid || null,
+    // file ids that might reference stored files in Supabase (used for webhook processing)
+    file_id: row.file_id || row.fileid || row.archivo_id || row.document_id || row.documento_id || row.fileId || null,
+    rate_file_id: row.rate_file_id || row.rate_file || null,
+    bol_file_id: row.bol_file_id || row.bol_file || null,
+    bol_url: row.bol_url || row.bill_of_lading_url || row.bol_link || row.bol_file_url || null,
+  };
+  // Normalize status to English keywords
+  if (mapped.estado) mapped.estado = normalizeEstado(mapped.estado);
+  // Normalize equipment codes to canonical and label
+  if (mapped.equipment_type) {
+    mapped.equipment_type = canonicalEquipmentCode(mapped.equipment_type);
+    mapped.equipment = mapped.equipment_type;
+    mapped.equipment_label = equipmentLabelFromCode(mapped.equipment_type);
+  } else {
+    mapped.equipment = null;
+    mapped.equipment_label = '';
+  }
+  if (!detectedId) console.warn('Supabase row missing explicit id; generated id:', finalId, row);
+  return mapped;
+}
+
+// Rebuild CAMIONEROS (driver list used for filters) from whatever is currently in CARGAS.
+function rebuildCamionerosFromCargas() {
+  const truckerMap = new Map();
+  CARGAS.forEach((c) => {
+    if (c.camionero_id) {
+      const key = String(c.camionero_id);
+      if (!truckerMap.has(key)) truckerMap.set(key, { id: c.camionero_id, nombre: c.driver || `Conductor ${c.camionero_id}` });
+    } else if (c.driver) {
+      const key = c.driver;
+      if (!truckerMap.has(key)) truckerMap.set(key, { id: c.driver, nombre: c.driver });
+    }
+  });
+  CAMIONEROS.length = 0;
+  truckerMap.forEach((v) => CAMIONEROS.push(v));
+  populateCamioneroFilter();
+}
+
+// Map raw rows into CARGAS. `replace: true` swaps the whole array; otherwise rows are
+// upserted by id (existing rows get refreshed in place, new ones are appended) so a
+// fast partial refresh never discards loads that aren't part of the current batch.
+function mapRowsIntoCargas(rows, { replace = false } = {}) {
+  const mappedList = rows.map((row, idx) => mapLoadRow(row, idx));
+  if (replace) {
+    CARGAS.length = 0;
+    CARGAS.push(...mappedList);
+  } else {
+    const indexById = new Map(CARGAS.map((c, i) => [c.id, i]));
+    mappedList.forEach((m) => {
+      const existingIdx = indexById.get(m.id);
+      if (existingIdx !== undefined) {
+        CARGAS[existingIdx] = m;
+      } else {
+        CARGAS.push(m);
+        indexById.set(m.id, CARGAS.length - 1);
+      }
+    });
+  }
+  rebuildCamionerosFromCargas();
+}
+
+// Fetch a table beyond the initial page using range-based pagination (avoids server-side row limits).
+async function fetchAllFrom(table) {
+  const limit = 1000;
+  let from = 0;
+  const all = [];
+  while (true) {
+    const to = from + limit - 1;
+    const { data, error } = await supabaseClient.from(table).select('*').range(from, to);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < limit) break;
+    from += limit;
+  }
+  return all;
+}
+
+// Fetch only the most recent rows from each loads table so the first paint is instant.
+async function fetchInitialLoadsBatch(limit = 200) {
+  const tables = ['loads_data', 'past_loads_data'];
+  const results = await Promise.all(tables.map(async (table) => {
+    try {
+      const { data, error } = await supabaseClient.from(table).select('*').order('created_at', { ascending: false }).limit(limit);
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      // Fall back to an unordered fetch if `created_at` isn't available on this table.
+      console.debug(`fetchInitialLoadsBatch: ordered fetch failed for ${table}, falling back`, e);
+      try {
+        const { data, error } = await supabaseClient.from(table).select('*').limit(limit);
+        if (error) throw error;
+        return data || [];
+      } catch (e2) {
+        console.warn(`fetchInitialLoadsBatch: fetch failed for ${table}`, e2);
+        return [];
+      }
+    }
+  }));
+  return results.flat();
+}
+
+let backgroundSyncStarted = false;
+
+// Fast path used on initial load and on-demand refreshes: only the most recent ~200 loads per table.
+// This is what gets cached locally (see saveRemoteCache) to keep the first paint instant on future visits.
 async function loadRemoteData() {
   if (!supabaseClient) {
     // No Supabase client available — keep loads empty and update UI
@@ -250,157 +509,52 @@ async function loadRemoteData() {
     console.warn('Supabase client not initialized; skipping remote load.');
     return;
   }
-  console.log('Cargando datos desde Supabase...');
+  console.log('Cargando datos recientes desde Supabase...');
   try {
-    // Fetch current and past loads from Supabase and map to app schema
-    // Use paginated fetch to avoid server-side 1000-row limits
-    async function fetchAllFrom(table) {
-      const limit = 1000;
-      let from = 0;
-      const all = [];
-      while (true) {
-        const to = from + limit - 1;
-        const { data, error } = await supabaseClient.from(table).select('*').range(from, to);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < limit) break;
-        from += limit;
-      }
-      return all;
+    const initialRows = await fetchInitialLoadsBatch(200);
+    // Drop unconfirmed local drafts so a confirmed real row can take their place.
+    for (let i = CARGAS.length - 1; i >= 0; i--) {
+      if (CARGAS[i] && CARGAS[i].__isNew) CARGAS.splice(i, 1);
     }
-
-    const [loadsData, pastData] = await Promise.all([
-      fetchAllFrom('loads_data'),
-      fetchAllFrom('past_loads_data'),
-    ]);
-
-    const combined = [];
-    if (Array.isArray(loadsData)) combined.push(...loadsData);
-    if (Array.isArray(pastData))  combined.push(...pastData);
-
-    if (combined.length > 0) {
-      CARGAS.length = 0;
-      combined.forEach((row, _idx) => {
-          // Prefer explicit origin/destination columns when present. Fallback to parsing `origen`/`destino` strings.
-          const [parsedOrigCity, parsedOrigState] = splitCityState(row.origen || '');
-          const [parsedDestCity, parsedDestState] = splitCityState(row.destino || '');
-          const originCityVal = row.origin_city || parsedOrigCity || '';
-          const originStateVal = row.origin_state || parsedOrigState || '';
-          const destCityVal = row.dest_city || parsedDestCity || '';
-          const destStateVal = row.dest_state || parsedDestState || '';
-
-          // detect / generate stable id for the load (prefer common id fields from different schemas)
-          let detectedId = row.load_id || row.loadId || row.loadid || row.id || row.ID || row.load_number || row.load_number_str || null;
-          const genId = `sup-${_idx + 1}`;
-          const finalId = detectedId || genId;
-          const mapped = {
-            // Use detected id when available otherwise a generated unique id
-            id: String(finalId),
-            // preserve original DB load_id when available (may be stored under several names)
-            load_id: row.load_id || row.loadId || row.loadid || row.load_number || row.load_number_str || row.ID || row.id || null,
-            cliente: row.company_name || row.broker || '',
-            broker_mc: row.broker_mc || '',
-            // normalized origin/destination display + explicit origin/destination fields
-            origen: originCityVal ? `${originCityVal}${originStateVal ? ', ' + originStateVal : ''}` : (row.origen || ''),
-            destino: destCityVal ? `${destCityVal}${destStateVal ? ', ' + destStateVal : ''}` : (row.destino || ''),
-            origin_city: originCityVal || null,
-            origin_state: originStateVal || null,
-            dest_city: destCityVal || null,
-            dest_state: destStateVal || null,
-            driver: row.driver || null,
-            camionero_id: row.driver_id || null,
-            estado: row.status || row.load_status || row.estado || 'Pending',
-            // pickup fields
-            pick_up_date: row.pick_up_date || row.pickup_date || row.fecha_recogida || '',
-            pick_up_date_db: row.pick_up_date || '',
-            pick_up_time: row.pick_up_time || row.pickup_time || '',
-            // expected pickup / delivery times (various possible column names)
-            pick_up_expected_time: row.expected_pick_up || row.expected_pickup || row.pickup_expected_time || row.pick_up_expected_time || row.pick_up_expected || null,
-            delivery_expected_time: row.expected_delivery || row.expecteddelivery || row.expected_delivery_time || row.delivery_expected_time || row.delivery_expected || null,
-            availability: row.availability || row.availability_window || row.availability_range || null,
-            fecha_recogida: row.pick_up_date || row.pickup_date || row.fecha_recogida || '',
-            fecha_entrega: row.delivery_date || row.fecha_entrega || '',
-            delivery_date: row.delivery_date || row.fecha_entrega || '',
-            delivery_date_db: row.delivery_date || '',
-            delivery_time: row.delivery_time || row.delivery_time_col || row.delivery_time || '',
-            // weight / length / pallets (map common column names, prefer max_* when available)
-            max_weight_lbs: row.max_weight_lbs || row.max_weight || row.weight_lbs || row.weight || row.peso || null,
-            weight: (row.max_weight_lbs || row.max_weight || row.weight || row.peso || ''),
-            max_length_ft: row.max_length_ft || row.length_ft || row.length || null,
-            length_ft: (row.max_length_ft || row.length_ft || row.length || ''),
-            pallets: row.pallets || row.pallet_count || row.num_pallets || null,
-            tipo: row.load_type || row.tipo || '',
-            documentos: row.documents || row.documentos || [],
-            other_doc: row.other_doc || null,
-              rate_usd: row.rate_usd || row.rate || null,
-            net_price: row.net_price ?? null,
-            commission: row['commission_ %'] ?? row['commission_%'] ?? row.commission ?? row.commision ?? row.commission_pct ?? row.commission_percentage ?? null,
-            estimated_rpm: row.estimated_rpm || row.est_rpm || row.rpm_estimated || null,
-            capacity: normalizeCapacityType(row.capacity_type || row.capacity || row.capacity_type_code || row.capacityType || null),
-            trip_miles: row.trip_miles || row.miles || row.distance || null,
-            stops: row.stops || null,
-            notas: row.notes || row.notas || '',
-            comments: row.comments || row.comment || '',
-            origin_deadhead: row.origin_deadhead || row.orig_deadhead || row.deadhead_origin || null,
-            dest_deadhead: row.dest_deadhead || row.destination_deadhead || row.deadhead_dest || null,
-            contact_email: row.contact_email || row.email || null,
-            contact_phone: row.contact_phone || row.phone || null,
-              contact_phone_ext: row.contact_phone_ext || row.phone_ext || null,
-            // invoice / BOL / custom load state
-            invoice_number: row.invoice || row.invoice_number || row.invoice_no || row.invoiceId || null,
-            bol_number: row.BOL || row.bol || row.bol_number || row.bill_of_lading || row.bill_of_lading_number || null,
-            load_state: row.state || row.load_state || row.load_stage || row.stage || null,
-              equipment_type: row.equipment_type || row.eq_type || row.equipment_code || row.equipment || row.trailer_type || row.trailer_code || null,
-            // upload URLs (may exist in different column names across datasets)
-            rate_conf_url: row.rate_conf_url || row.rate_conf || row.rate_confirmation_url || row.rate_url || row.rate_conf_link || null,
-            // preserve any document-driver IDs if present in source tables
-            rate_drive_id: row.rate_drive_id || row.rate_driver_id || row.rate_doc_id || row.rate_id || row.rate_drive || row.rate_driveid || null,
-            bol_drive_id: row.bol_drive_id || row.bol_driver_id || row.bol_doc_id || row.bol_id || row.bol_drive || row.bol_driveid || null,
-            // file ids that might reference stored files in Supabase (used for webhook processing)
-            file_id: row.file_id || row.fileid || row.archivo_id || row.document_id || row.documento_id || row.fileId || null,
-            rate_file_id: row.rate_file_id || row.rate_file || null,
-            bol_file_id: row.bol_file_id || row.bol_file || null,
-            bol_url: row.bol_url || row.bill_of_lading_url || row.bol_link || row.bol_file_url || null,
-          };
-        // Normalize status to English keywords
-        if (mapped.estado) mapped.estado = normalizeEstado(mapped.estado);
-        // Normalize equipment codes to canonical and label
-        if (mapped.equipment_type) {
-          mapped.equipment_type = canonicalEquipmentCode(mapped.equipment_type);
-          mapped.equipment = mapped.equipment_type;
-          mapped.equipment_label = equipmentLabelFromCode(mapped.equipment_type);
-        } else {
-          mapped.equipment = null;
-          mapped.equipment_label = '';
-        }
-        if (!detectedId) console.warn('Supabase row missing explicit id; generated id:', finalId, row);
-        CARGAS.push(mapped);
-      });
-    }
-
-    // Build CAMIONEROS list from driver fields present in the loads (no separate table)
-    const truckerMap = new Map();
-    CARGAS.forEach((c) => {
-      if (c.camionero_id) {
-        const key = String(c.camionero_id);
-        if (!truckerMap.has(key)) truckerMap.set(key, { id: c.camionero_id, nombre: c.driver || `Conductor ${c.camionero_id}` });
-      } else if (c.driver) {
-        const key = c.driver;
-        if (!truckerMap.has(key)) truckerMap.set(key, { id: c.driver, nombre: c.driver });
-      }
-    });
-    CAMIONEROS.length = 0;
-    truckerMap.forEach((v) => CAMIONEROS.push(v));
-
-    // Rebuild camionero filter (avoid duplicates)
-    populateCamioneroFilter();
-    console.log('Supabase: loaded loads:', CARGAS.length, 'drivers:', CAMIONEROS.length);
-    showToast(`Synced: ${CARGAS.length} loads, ${CAMIONEROS.length} drivers`, 'info');
+    lastFastBatchSnapshot = initialRows.map((row, idx) => mapLoadRow(row, idx));
+    // Merge (not replace) once we already hold data — a fast refresh must never
+    // discard loads brought in by the full background sync.
+    mapRowsIntoCargas(initialRows, { replace: CARGAS.length === 0 });
+    console.log('Supabase: recent loads:', CARGAS.length, 'drivers:', CAMIONEROS.length);
+    saveRemoteCache();
   } catch (err) {
     console.warn('Error loading from Supabase:', err.message || err);
     showToast('Error loading data from Supabase: ' + (err.message || err), 'error');
   }
+}
+
+// Full history sync: runs quietly after the fast initial paint so older loads become
+// available (search, pagination, driver history) without blocking the UI. Never persisted
+// to localStorage — only the initial fast batch is cached (see saveRemoteCache).
+function syncAllLoadsInBackground() {
+  if (!supabaseClient || backgroundSyncStarted) return Promise.resolve();
+  backgroundSyncStarted = true;
+  return (async () => {
+    try {
+      const [loadsData, pastData] = await Promise.all([
+        fetchAllFrom('loads_data'),
+        fetchAllFrom('past_loads_data'),
+      ]);
+      const combined = [];
+      if (Array.isArray(loadsData)) combined.push(...loadsData);
+      if (Array.isArray(pastData)) combined.push(...pastData);
+
+      if (combined.length > 0) {
+        mapRowsIntoCargas(combined, { replace: true });
+        console.log('Supabase: full sync complete —', CARGAS.length, 'loads,', CAMIONEROS.length, 'drivers');
+        showToast(`Synced: ${CARGAS.length} loads, ${CAMIONEROS.length} drivers`, 'info');
+      }
+    } catch (err) {
+      console.warn('Background full sync failed:', err.message || err);
+    } finally {
+      backgroundSyncStarted = false;
+    }
+  })();
 }
 
 // Load drivers table from Supabase into `DRIVERS` and update `CAMIONEROS` filter
@@ -1046,20 +1200,33 @@ async function navigateTo(view) {
     view === "cargas" ? downloadBtn.classList.remove("hidden") : downloadBtn.classList.add("hidden");
   }
 
-  // Refresh remote data every time user opens Dashboard or Loads from sidebar.
+  // Refresh remote data every time user opens Dashboard or Loads from sidebar,
+  // but only block navigation when there is no data in memory yet. Otherwise
+  // render instantly from what we already have and refresh silently.
   if (view === 'dashboard' || view === 'cargas') {
-    try {
-      isLoadingLoads = true;
-      loadsFetched = false;
-      if (view === 'cargas') renderCargas();
-      await loadRemoteData();
-      await loadDrivers(true);
-    } finally {
-      // Ignore stale updates if a newer navigation action started.
-      if (refreshToken === navigationRefreshToken) {
-        isLoadingLoads = false;
-        loadsFetched = true;
+    if (CARGAS.length === 0) {
+      try {
+        isLoadingLoads = true;
+        loadsFetched = false;
+        if (view === 'cargas') renderCargas();
+        await loadRemoteData();
+        await loadDrivers(true);
+      } finally {
+        // Ignore stale updates if a newer navigation action started.
+        if (refreshToken === navigationRefreshToken) {
+          isLoadingLoads = false;
+          loadsFetched = true;
+        }
       }
+    } else if (!isRemoteCacheFresh(loadRemoteCache())) {
+      loadRemoteData()
+        .then(() => loadDrivers(true))
+        .then(() => {
+          if (refreshToken !== navigationRefreshToken) return;
+          if (currentView === 'dashboard') renderDashboard();
+          if (currentView === 'cargas') renderCargas();
+        })
+        .catch((e) => console.debug('Background refresh failed', e));
     }
   }
 
@@ -6009,6 +6176,7 @@ async function saveEdit(cargaId) {
     try { if (openModalCargaId === cargaId) closeModal(); } catch (e) {}
     try { if (currentView === 'dashboard') renderDashboard(); } catch (e) {}
     try { if (currentView === 'cargas') renderCargas(); } catch (e) {}
+    try { saveRemoteCache(); } catch (e) {}
   }
 }
 
