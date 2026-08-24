@@ -1421,7 +1421,12 @@ function populateCamioneroFilter() {
   if (!menu) return;
 
   menu.innerHTML = '';
-  const availableDrivers = Array.isArray(CAMIONEROS) ? CAMIONEROS : [];
+  const availableDrivers = (Array.isArray(DRIVERS) ? DRIVERS : [])
+    .filter((driver) => String(driver.status || '').trim().toLowerCase() === 'active')
+    .map((driver) => ({
+      id: driver.id,
+      nombre: driver.name || driver.nombre || driver.id
+    }));
 
   availableDrivers.forEach((c) => {
     const label = document.createElement("label");
