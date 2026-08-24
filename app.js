@@ -3377,11 +3377,10 @@ function downloadInvoiceDoc() {
 function applyFilters() {
   const search    = document.getElementById("filter-search").value.toLowerCase().trim();
   const selectedDrivers = (window.filterDriverSelected || []).map((id) => String(id).trim()).filter(Boolean);
-  const selectedDriverIds = new Set(selectedDrivers);
   const selectedDriverNames = new Set(
-    (CAMIONEROS || [])
-      .filter((d) => selectedDriverIds.has(String(d.id)))
-      .map((d) => String(d.nombre || '').trim().toLowerCase())
+    (DRIVERS || [])
+      .filter((driver) => selectedDrivers.includes(String(driver.id).trim()))
+      .map((driver) => String(driver.name || '').trim().toLowerCase())
       .filter(Boolean)
   );
   // Date range filter state (single input picker)
@@ -3414,12 +3413,8 @@ function applyFilters() {
     }
     let matchCam = true;
     if (selectedDrivers.length > 0) {
-      const cargaCamIdStr = (c.camionero_id !== null && c.camionero_id !== undefined) ? String(c.camionero_id).trim() : '';
       const cargaDriverName = (c.driver !== null && c.driver !== undefined) ? String(c.driver).trim().toLowerCase() : '';
-      const idMatch = cargaCamIdStr && selectedDriverIds.has(cargaCamIdStr);
-      const nameMatch = cargaDriverName && selectedDriverNames.has(cargaDriverName);
-      const directNameMatch = cargaDriverName && selectedDriverIds.has(cargaDriverName);
-      matchCam = idMatch || nameMatch || directNameMatch;
+      matchCam = cargaDriverName && selectedDriverNames.has(cargaDriverName);
     }
     let matchFecha = true;
     if (dateStart) {
