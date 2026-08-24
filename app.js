@@ -1421,12 +1421,9 @@ function populateCamioneroFilter() {
   if (!menu) return;
 
   menu.innerHTML = '';
-  const activeDriversMap = new Map((DRIVERS || [])
-    .filter((d) => String(d.status || '').trim().toLowerCase() === 'active')
-    .map((d) => [String(d.id), d])
-  );
+  const availableDrivers = Array.isArray(CAMIONEROS) ? CAMIONEROS : [];
 
-  CAMIONEROS.filter((c) => activeDriversMap.has(String(c.id))).forEach((c) => {
+  availableDrivers.forEach((c) => {
     const label = document.createElement("label");
     label.className = 'multi-option';
 
@@ -1442,10 +1439,7 @@ function populateCamioneroFilter() {
   });
 
   // Remove stale selected values if drivers list changed
-  const validIds = new Set((CAMIONEROS || [])
-    .filter((c) => activeDriversMap.has(String(c.id)))
-    .map((d) => String(d.id))
-  );
+  const validIds = new Set(availableDrivers.map((d) => String(d.id)));
   window.filterDriverSelected = (window.filterDriverSelected || []).filter((id) => validIds.has(String(id)));
   updateDropdownLabel('driver');
 }
