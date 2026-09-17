@@ -2200,7 +2200,8 @@ const DRIVER_INFO_ICONS = {
   vin: driverInfoIcon('<rect x="3" y="7" width="18" height="10" rx="1"/><path d="M7 11v3M11 11v3M15 11v3"/>'),
   fax: driverInfoIcon('<path d="M6 9V3h12v6"/><path d="M6 18h12v3H6z"/><rect x="4" y="9" width="16" height="9" rx="1"/>'),
   mapPin: driverInfoIcon('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
-  route: driverInfoIcon('<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h8a4 4 0 0 0 4-4V9a4 4 0 0 0-4-4H9"/>')
+  route: driverInfoIcon('<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h8a4 4 0 0 0 4-4V9a4 4 0 0 0-4-4H9"/>'),
+  bank: driverInfoIcon('<path d="M3 10h18M5 10V7.5l7-4 7 4V10M7 10v8M12 10v8M17 10v8M4 18h16"/>')
 };
 
 function toTitleCase(value) {
@@ -2219,6 +2220,36 @@ function renderOperatingCities(rawValue) {
   }
 
   return `<div class="driver-operating-cities">${DRIVER_INFO_ICONS.route}<span class="driver-cities-text">${escapeHtml(text)}</span></div>`;
+}
+
+function renderBankingDetails(company) {
+  const bankName = company && company.bank_name ? String(company.bank_name).trim() : '';
+  const bankPhone = company && company.bank_phone ? String(company.bank_phone).trim() : '';
+  const routingNumber = company && company.bank_routing_number ? String(company.bank_routing_number).trim() : '';
+  const accountNumber = company && company.bank_account_number ? String(company.bank_account_number).trim() : '';
+
+  const hasBankData = [bankName, bankPhone, routingNumber, accountNumber].some((value) => !!value);
+  if (!hasBankData) {
+    return `
+      <div class="driver-bank-empty">
+        <span class="driver-bank-empty-label">N/A</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="driver-contact-line">${DRIVER_INFO_ICONS.phone}<span>${escapeHtml(bankPhone || 'N/A')}</span></div>
+    <div class="driver-bank-grid">
+      <div class="driver-bank-item">
+        <span class="driver-bank-label">Routing Number</span>
+        <span class="driver-bank-value">${escapeHtml(routingNumber || 'N/A')}</span>
+      </div>
+      <div class="driver-bank-item">
+        <span class="driver-bank-label">Account Number</span>
+        <span class="driver-bank-value">${escapeHtml(accountNumber || 'N/A')}</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderContactsBlock(rawValue) {
@@ -2368,6 +2399,11 @@ async function openDriverInfoModal(driverReference) {
                 <span class="driver-policy-value">${escapeHtml(company.insurance_policy_number)}</span>
               </div>` : ''}
             <div class="driver-contact-list">${renderContactsBlock(company && company.insurance_contacts)}</div>
+          </div>
+
+          <div class="driver-info-section">
+            <div class="driver-info-section-title driver-info-section-title--with-icon">${DRIVER_INFO_ICONS.bank}<span>BANKING DETAILS${company && company.bank_name ? `: ${escapeHtml(company.bank_name)}` : ''}</span></div>
+            ${renderBankingDetails(company)}
           </div>
         </div>
       </div>
